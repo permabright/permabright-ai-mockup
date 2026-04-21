@@ -17,6 +17,7 @@ Put one of these inside it:
 
 ```env
 REPLICATE_API_TOKEN=your_replicate_token_here
+REPLICATE_MODEL=black-forest-labs/flux-2-dev
 ```
 
 or
@@ -57,6 +58,7 @@ The browser sends the request to the local server, and the local server calls th
 - Output is designed to default to a night preview.
 - The app keeps the original photo visible for comparison.
 - The AI prompt is visible on screen so it can be refined if needed.
+- Default Replicate model is now the cheaper `black-forest-labs/flux-2-dev`.
 
 ## Public URL
 

@@ -5,6 +5,7 @@ const path = require("path");
 
 const PORT = process.env.PORT || 4174;
 const ROOT = __dirname;
+const REPLICATE_MODEL = process.env.REPLICATE_MODEL || "black-forest-labs/flux-2-dev";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -175,7 +176,7 @@ async function generateWithReplicate(body, token) {
 
   let prediction = await requestJson({
     hostname: "api.replicate.com",
-    path: "/v1/models/black-forest-labs/flux-2-pro/predictions",
+    path: `/v1/models/${REPLICATE_MODEL}/predictions`,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

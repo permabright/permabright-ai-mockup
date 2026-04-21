@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Port = 4174
+$ReplicateModel = if ($env:REPLICATE_MODEL) { $env:REPLICATE_MODEL } else { "black-forest-labs/flux-2-dev" }
 
 function Load-DotEnv {
   $envPath = Join-Path $Root ".env"
@@ -261,7 +262,7 @@ function Generate-MockupWithReplicate($body, [string]$replicateToken) {
 
   $prediction = Invoke-ReplicateJson `
     -Method Post `
-    -Uri "https://api.replicate.com/v1/models/black-forest-labs/flux-2-pro/predictions" `
+    -Uri "https://api.replicate.com/v1/models/$ReplicateModel/predictions" `
     -Headers $headers `
     -Body ($payload | ConvertTo-Json -Depth 20)
 
