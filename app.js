@@ -2,27 +2,27 @@ const presets = {
   accent: {
     name: "Accent",
     brief: "Elegant permanent accent lighting",
-    effect: "Warm architectural accent lighting with evenly spaced permanent lights under the eaves."
+    effect: "Warm white permanent puck lights with a soft premium architectural glow."
   },
   warmWhite: {
     name: "Warm White",
     brief: "Classic warm white look",
-    effect: "Soft warm white permanent lighting with a premium upscale feel."
+    effect: "Clean warm white permanent puck lights with subtle downward wash."
   },
   christmas: {
     name: "Christmas",
     brief: "Holiday multicolor presentation",
-    effect: "Festive red, green, warm white, and holiday-inspired permanent light display."
+    effect: "Festive individual red, green, and warm white puck lights spaced evenly along the marked runs."
   },
   fourth: {
     name: "Fourth of July",
     brief: "Patriotic red white and blue",
-    effect: "Red, white, and blue permanent lighting arranged cleanly along the roofline."
+    effect: "Individual red, white, and blue puck lights spaced evenly only on the marked runs."
   },
   halloween: {
     name: "Halloween",
     brief: "Orange and purple event lighting",
-    effect: "Orange and purple permanent lighting with a dramatic seasonal glow."
+    effect: "Individual orange and purple puck lights with a dramatic but clean seasonal glow."
   }
 };
 
@@ -133,25 +133,44 @@ function readImageFile(event, slot) {
 
 function buildPrompt() {
   const preset = presets[state.selectedPreset];
-  const guideLine = state.guidePhotoDataUrl
-    ? "A separate matching guide photo is also provided with the intended roofline/install path marked in red. Use that marked path to know exactly where the permanent lights should go, but do not show the red markup in the final result."
-    : "If the uploaded home photo itself includes red roofline markup, remove or ignore the markup in the final result while still using it as the placement guide.";
+  const guideIntro = state.guidePhotoDataUrl
+    ? [
+        "Two matching images are provided.",
+        "- Image 1 is the clean house photo and is the base image.",
+        "- Image 2 is the same house with the intended install path marked in red.",
+        "Treat the red-marked guide image as authoritative for light placement."
+      ].join("\n")
+    : [
+        "One house photo is provided.",
+        "If the photo includes red roofline markup, use that markup as the authoritative install guide but remove it from the final result."
+      ].join("\n");
 
   return [
     "Create a polished homeowner-facing mockup for Permabright permanent lighting.",
     "",
-    "Use the uploaded clean front-of-home photo as the base image.",
-    guideLine,
+    guideIntro,
+    "",
+    "Placement rules:",
+    "- Follow only the marked install path.",
+    "- The red guide path is authoritative. Do not invent any additional runs.",
+    "- Lights must sit on the lower front-facing fascia or eave line under the roof edge, not on the top roof ridges, hips, or valleys.",
+    "- Never trace the peak lines on top of the roof unless that exact top line is explicitly marked in red.",
+    "- If a segment is not clearly marked, leave it unlit rather than guessing.",
+    "- Do not place lights as one continuous strip or neon line.",
+    "- Show individual permanent bulbs or pucks spaced about 8 inches apart.",
+    "- Each bulb should have a subtle downward-facing glow or wall wash, not a thick glowing rope.",
     "",
     "Output requirements:",
     "- Convert the scene into a realistic dusk/night exterior preview.",
     "- Keep the home recognizable and preserve the architecture and landscaping.",
-    "- Apply permanent lights only along the intended roofline path.",
-    "- Lights should feel premium, evenly spaced, and built into the home rather than temporary string lights.",
+    "- Apply permanent lights only along the intended marked path.",
+    "- Lights should feel premium, evenly spaced, and built into the home rather than temporary string lights or LED strips.",
     `- Lighting preset: ${preset.effect}`,
     "- The result should look like a beautiful sales illustration for a homeowner.",
     "- Do not show any red lines, measurement notes, or markup in the final image.",
     "- Do not add decorations or unrelated holiday props.",
+    "- Do not outline the upper roof planes.",
+    "- Do not create straight artificial light bars where individual bulbs should be visible.",
     "",
     "Style target:",
     "- clean",
