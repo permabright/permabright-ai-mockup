@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#101316">
+  <title>Permabright AI Mockup</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <p class="eyebrow">Permabright</p>
+        <h1>AI Mockup Studio</h1>
+        <p class="lede">Built for the rep workflow: upload the home photo, optionally upload the red-marked guide photo, choose a preset, and generate a homeowner-facing night mockup.</p>
+      </div>
+
+      <section class="panel">
+        <h2>1. Photos</h2>
+        <label class="file-picker">
+          <input id="cleanPhotoInput" type="file" accept="image/*">
+          <span>Upload Clean Home Photo</span>
+        </label>
+        <p id="cleanPhotoName" class="meta">No clean photo selected</p>
+
+        <label class="file-picker secondary-picker">
+          <input id="guidePhotoInput" type="file" accept="image/*">
+          <span>Upload Red Guide Photo (Optional)</span>
+        </label>
+        <p id="guidePhotoName" class="meta">No guide photo selected</p>
+      </section>
+
+      <section class="panel">
+        <h2>2. Preset</h2>
+        <div id="presetButtons" class="preset-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>3. Generate</h2>
+        <button id="generateButton" type="button">Generate AI Mockup</button>
+        <button id="copyPromptButton" class="secondary-button" type="button">Copy AI Prompt</button>
+        <p class="meta">Default output target: polished night preview with the markup removed and Permabright lights applied along the guide path.</p>
+      </section>
+    </aside>
+
+    <main class="stage">
+      <header class="stage-header">
+        <div>
+          <p class="eyebrow">Preview</p>
+          <h2 id="stageTitle">Ready for AI image generation</h2>
+          <p id="stageHeaderStatus" class="meta stage-meta">Upload photos and choose a preset.</p>
+        </div>
+      </header>
+
+      <section class="canvas-card">
+        <div class="message-card">
+          <h3>Generated Preview</h3>
+          <p id="statusText">Upload the clean photo, optionally upload the red guide photo, choose a preset, then click Generate AI Mockup.</p>
+          <p id="requirementText" class="message-emphasis">The app sends the photos to the local server, which calls OpenAI server-side using your API key.</p>
+        </div>
+
+        <div id="previewCard" class="preview-card">
+          <div id="previewViewport" class="preview-viewport">
+            <img id="originalPreview" alt="Original home photo">
+            <img id="generatedPreview" alt="Generated lighting mockup">
+            <div id="compareDivider" class="compare-divider" aria-hidden="true"></div>
+          </div>
+          <label class="compare-control">
+            <span>Before / After Split</span>
+            <input id="compareRange" type="range" min="0" max="100" value="100">
+          </label>
+        </div>
+
+        <div class="prompt-card">
+          <div class="prompt-header">
+            <h3>AI Request</h3>
+            <span id="presetBadge" class="preset-badge">Accent</span>
+          </div>
+          <textarea id="promptOutput" readonly></textarea>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

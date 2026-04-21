@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#101316"/>
+  <path d="M42 160 L88 112 L128 140 L176 88 L214 124" fill="none" stroke="#ff9d2f" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="42" cy="160" r="10" fill="#ffe0a3"/>
+  <circle cx="88" cy="112" r="10" fill="#ffe0a3"/>
+  <circle cx="128" cy="140" r="10" fill="#ffe0a3"/>
+  <circle cx="176" cy="88" r="10" fill="#ffe0a3"/>
+  <circle cx="214" cy="124" r="10" fill="#ffe0a3"/>
+  <text x="36" y="220" fill="#eef3f7" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">PB</text>
+</svg>
