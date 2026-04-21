@@ -5,7 +5,7 @@ const path = require("path");
 
 const PORT = process.env.PORT || 4174;
 const ROOT = __dirname;
-const REPLICATE_MODEL = process.env.REPLICATE_MODEL || "black-forest-labs/flux-2-pro";
+const DEFAULT_REPLICATE_MODEL = process.env.REPLICATE_MODEL || "black-forest-labs/flux-2-pro";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -161,6 +161,7 @@ async function generateWithOpenAI(body, apiKey) {
 }
 
 async function generateWithReplicate(body, token) {
+  const selectedModel = selectReplicateModel(body.qualityMode);
   const imageUrls = buildInputImages(body).map((item) => item.image_url);
   const payload = {
     input: {
@@ -176,7 +177,7 @@ async function generateWithReplicate(body, token) {
 
   let prediction = await requestJson({
     hostname: "api.replicate.com",
-    path: `/v1/models/${REPLICATE_MODEL}/predictions`,
+    path: `/v1/models/${selectedModel}/predictions`,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -206,6 +207,16 @@ async function generateWithReplicate(body, token) {
   return {
     imageDataUrl: `data:image/jpeg;base64,${imageBuffer.toString("base64")}`
   };
+}
+
+function selectReplicateModel(qualityMode) {
+  if (process.env.REPLICATE_MODEL) {
+    return process.env.REPLICATE_MODEL;
+  }
+
+  return qualityMode === "draft"
+    ? "black-forest-labs/flux-2-dev"
+    : DEFAULT_REPLICATE_MODEL;
 }
 
 function buildInputImages(body) {

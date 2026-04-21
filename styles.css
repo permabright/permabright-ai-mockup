@@ -120,8 +120,19 @@ button.preset-button {
   gap: 10px;
 }
 
+.quality-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 .preset-button {
   text-align: left;
+  margin-bottom: 0;
+}
+
+.quality-button {
+  text-align: center;
   margin-bottom: 0;
 }
 
@@ -131,7 +142,14 @@ button.preset-button {
   margin-top: 4px;
 }
 
-.preset-button.is-active {
+.quality-button small {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.preset-button.is-active,
+.quality-button.is-active {
   outline: 2px solid rgba(255, 157, 47, 0.7);
 }
 

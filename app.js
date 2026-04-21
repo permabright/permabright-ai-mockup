@@ -26,12 +26,26 @@ const presets = {
   }
 };
 
+const qualityModes = {
+  draft: {
+    name: "Draft",
+    brief: "Lower cost",
+    promptNote: "Favor a cost-efficient draft while still following the marked install path accurately."
+  },
+  final: {
+    name: "Final",
+    brief: "Best quality",
+    promptNote: "Favor the highest quality realistic homeowner-facing render with accurate permanent bulb placement."
+  }
+};
+
 const state = {
   cleanPhotoName: "",
   cleanPhotoDataUrl: "",
   guidePhotoName: "",
   guidePhotoDataUrl: "",
   selectedPreset: "accent",
+  qualityMode: "final",
   generatedImageDataUrl: "",
   compareSplit: 100
 };
@@ -42,6 +56,7 @@ const refs = {
   cleanPhotoName: document.getElementById("cleanPhotoName"),
   guidePhotoName: document.getElementById("guidePhotoName"),
   presetButtons: document.getElementById("presetButtons"),
+  qualityButtons: document.getElementById("qualityButtons"),
   generateButton: document.getElementById("generateButton"),
   copyPromptButton: document.getElementById("copyPromptButton"),
   promptOutput: document.getElementById("promptOutput"),
@@ -59,6 +74,7 @@ const refs = {
 
 function boot() {
   buildPresetButtons();
+  buildQualityButtons();
   wireEvents();
   render();
   clearOldServiceWorkers();
@@ -76,6 +92,21 @@ function buildPresetButtons() {
       render();
     });
     refs.presetButtons.appendChild(button);
+  });
+}
+
+function buildQualityButtons() {
+  refs.qualityButtons.innerHTML = "";
+  Object.entries(qualityModes).forEach(([key, mode]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "quality-button secondary-button";
+    button.innerHTML = `${mode.name}<small>${mode.brief}</small>`;
+    button.addEventListener("click", () => {
+      state.qualityMode = key;
+      render();
+    });
+    refs.qualityButtons.appendChild(button);
   });
 }
 
@@ -133,6 +164,7 @@ function readImageFile(event, slot) {
 
 function buildPrompt() {
   const preset = presets[state.selectedPreset];
+  const quality = qualityModes[state.qualityMode];
   const guideIntro = state.guidePhotoDataUrl
     ? [
         "Two matching images are provided.",
@@ -166,6 +198,7 @@ function buildPrompt() {
     "- Apply permanent lights only along the intended marked path.",
     "- Lights should feel premium, evenly spaced, and built into the home rather than temporary string lights or LED strips.",
     `- Lighting preset: ${preset.effect}`,
+    `- Quality mode: ${quality.promptNote}`,
     "- The result should look like a beautiful sales illustration for a homeowner.",
     "- Do not show any red lines, measurement notes, or markup in the final image.",
     "- Do not add decorations or unrelated holiday props.",
@@ -199,7 +232,8 @@ async function generateMockup() {
         prompt: buildPrompt(),
         cleanPhotoDataUrl: state.cleanPhotoDataUrl,
         guidePhotoDataUrl: state.guidePhotoDataUrl,
-        preset: state.selectedPreset
+        preset: state.selectedPreset,
+        qualityMode: state.qualityMode
       })
     });
 
@@ -233,6 +267,10 @@ function render() {
     const key = Object.keys(presets)[index];
     button.classList.toggle("is-active", key === state.selectedPreset);
   });
+  [...refs.qualityButtons.children].forEach((button, index) => {
+    const key = Object.keys(qualityModes)[index];
+    button.classList.toggle("is-active", key === state.qualityMode);
+  });
 
   refs.cleanPhotoName.textContent = state.cleanPhotoName || "No clean photo selected";
   refs.guidePhotoName.textContent = state.guidePhotoName || "No guide photo selected";
@@ -246,7 +284,7 @@ function render() {
   refs.previewViewport.classList.toggle("has-generated", Boolean(state.generatedImageDataUrl));
 
   refs.stageTitle.textContent = state.cleanPhotoDataUrl || state.guidePhotoDataUrl
-    ? `${presets[state.selectedPreset].name} mockup workflow`
+    ? `${presets[state.selectedPreset].name} ${qualityModes[state.qualityMode].name} workflow`
     : "Ready for AI image generation";
   refs.stageHeaderStatus.textContent = state.generatedImageDataUrl
     ? "Preview ready below."

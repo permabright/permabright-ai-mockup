@@ -59,6 +59,9 @@ The browser sends the request to the local server, and the local server calls th
 - The app keeps the original photo visible for comparison.
 - The AI prompt is visible on screen so it can be refined if needed.
 - Default Replicate model is now the higher-quality `black-forest-labs/flux-2-pro`.
+- The app now includes `Draft` and `Final` quality modes:
+  - `Draft` uses a cheaper Replicate model
+  - `Final` uses the better premium model
 
 ## Public URL
 
