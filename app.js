@@ -30,11 +30,13 @@ const qualityModes = {
   draft: {
     name: "Draft",
     brief: "Lower cost",
+    cost: "~$0.03 to $0.05",
     promptNote: "Favor a cost-efficient draft while still following the marked install path accurately."
   },
   final: {
     name: "Final",
     brief: "Best quality",
+    cost: "~$0.08 to $0.15",
     promptNote: "Favor the highest quality realistic homeowner-facing render with accurate permanent bulb placement."
   }
 };
@@ -101,7 +103,7 @@ function buildQualityButtons() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "quality-button secondary-button";
-    button.innerHTML = `${mode.name}<small>${mode.brief}</small>`;
+    button.innerHTML = `${mode.name}<small>${mode.brief}</small><small>${mode.cost} per image</small>`;
     button.addEventListener("click", () => {
       state.qualityMode = key;
       render();
