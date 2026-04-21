@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Port = 4174
-$ReplicateModel = if ($env:REPLICATE_MODEL) { $env:REPLICATE_MODEL } else { "black-forest-labs/flux-2-dev" }
+$ReplicateModel = if ($env:REPLICATE_MODEL) { $env:REPLICATE_MODEL } else { "black-forest-labs/flux-2-pro" }
 
 function Load-DotEnv {
   $envPath = Join-Path $Root ".env"

@@ -5,7 +5,7 @@ const path = require("path");
 
 const PORT = process.env.PORT || 4174;
 const ROOT = __dirname;
-const REPLICATE_MODEL = process.env.REPLICATE_MODEL || "black-forest-labs/flux-2-dev";
+const REPLICATE_MODEL = process.env.REPLICATE_MODEL || "black-forest-labs/flux-2-pro";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
