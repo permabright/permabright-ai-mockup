@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#101316">
-  <title>Permabright AI Mockup</title>
+  <title>Permabright Mockup Studio</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg">
@@ -15,62 +15,126 @@
     <aside class="sidebar">
       <div class="brand">
         <p class="eyebrow">Permabright</p>
-        <h1>AI Mockup Studio</h1>
-        <p class="lede">Built for the rep workflow: upload the home photo, optionally upload the red-marked guide photo, choose a preset, and generate a homeowner-facing night mockup.</p>
+        <h1>Mockup Studio</h1>
+        <p class="lede">Draw the roofline, choose a preset, preview the lighting.</p>
       </div>
 
+      <!-- Step 1: Photo -->
       <section class="panel">
-        <h2>1. Photos</h2>
-        <label class="file-picker">
-          <input id="cleanPhotoInput" type="file" accept="image/*">
-          <span>Upload Clean Home Photo</span>
+        <div class="panel-header">
+          <span class="step-num">1</span>
+          <h2>House Photo</h2>
+        </div>
+        <label class="file-picker" id="photoLabel">
+          <input id="photoInput" type="file" accept="image/*">
+          <span id="photoLabelText">Upload House Photo</span>
         </label>
-        <p id="cleanPhotoName" class="meta">No clean photo selected</p>
-
-        <label class="file-picker secondary-picker">
-          <input id="guidePhotoInput" type="file" accept="image/*">
-          <span>Upload Red Guide Photo (Optional)</span>
-        </label>
-        <p id="guidePhotoName" class="meta">No guide photo selected</p>
+        <p id="photoName" class="meta">No photo selected</p>
       </section>
 
+      <!-- Step 2: Roofline -->
       <section class="panel">
-        <h2>2. Preset</h2>
+        <div class="panel-header">
+          <span class="step-num">2</span>
+          <h2>Roofline</h2>
+        </div>
+        <button id="drawToggleBtn" class="draw-btn" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+          Draw Roofline
+        </button>
+        <div class="tool-row">
+          <button id="undoBtn" class="secondary-button tool-btn" type="button">↩ Undo</button>
+          <button id="clearBtn" class="secondary-button tool-btn" type="button">🗑 Clear</button>
+        </div>
+        <p class="meta" id="drawHint">Upload a photo to start drawing.</p>
+      </section>
+
+      <!-- Step 3: Preset -->
+      <section class="panel">
+        <div class="panel-header">
+          <span class="step-num">3</span>
+          <h2>Light Preset</h2>
+        </div>
         <div id="presetButtons" class="preset-list"></div>
       </section>
 
+      <!-- Step 4: Pattern -->
       <section class="panel">
-        <h2>3. Quality</h2>
-        <div id="qualityButtons" class="quality-toggle"></div>
-        <p class="meta">Use <strong>Draft</strong> for cheaper test generations and <strong>Final</strong> for the better homeowner-facing version.</p>
-        <p class="meta">Estimated costs are rough per generated image and can vary based on image size and provider pricing.</p>
+        <div class="panel-header">
+          <span class="step-num">4</span>
+          <h2>Spacing Pattern</h2>
+        </div>
+        <div id="patternButtons" class="pattern-list"></div>
       </section>
 
+      <!-- Step 5: Save -->
       <section class="panel">
-        <h2>4. Generate</h2>
-        <button id="generateButton" type="button">Generate AI Mockup</button>
-        <button id="copyPromptButton" class="secondary-button" type="button">Copy AI Prompt</button>
-        <p class="meta">Default output target: polished night preview with the markup removed and Permabright lights applied along the guide path.</p>
+        <div class="panel-header">
+          <span class="step-num">5</span>
+          <h2>Save Mockup</h2>
+        </div>
+        <button id="downloadBtn" type="button">⬇ Download Image</button>
+        <p class="meta" id="bulbCount">Draw the roofline to see bulb count.</p>
       </section>
+
+      <!-- AI Generation (optional) -->
+      <details class="panel ai-panel">
+        <summary>
+          <span class="ai-summary-label">AI Image Generation</span>
+          <span class="ai-summary-badge">Optional</span>
+        </summary>
+        <div class="ai-inner">
+          <p class="meta">Send photos to OpenAI to generate a photorealistic night preview. Requires the local server.</p>
+          <label class="file-picker secondary-picker">
+            <input id="guidePhotoInput" type="file" accept="image/*">
+            <span>Upload Red Guide Photo</span>
+          </label>
+          <p id="guidePhotoName" class="meta">No guide photo selected</p>
+          <div id="qualityButtons" class="quality-toggle"></div>
+          <div id="aiPresetButtons" class="ai-preset-list"></div>
+          <button id="generateButton" type="button">Generate AI Mockup</button>
+          <button id="copyPromptButton" class="secondary-button" type="button">Copy AI Prompt</button>
+        </div>
+      </details>
     </aside>
 
     <main class="stage">
-      <header class="stage-header">
-        <div>
-          <p class="eyebrow">Preview</p>
-          <h2 id="stageTitle">Ready for AI image generation</h2>
-          <p id="stageHeaderStatus" class="meta stage-meta">Upload photos and choose a preset.</p>
+      <!-- Empty state -->
+      <div id="emptyState" class="empty-state">
+        <div class="empty-inner">
+          <div class="upload-icon">🏠</div>
+          <h2>Upload a House Photo</h2>
+          <p>Start by uploading a photo of the home to begin mapping the roofline and previewing permanent lighting.</p>
+          <label class="file-picker big-picker">
+            <input id="photoInput2" type="file" accept="image/*">
+            <span>Choose Photo</span>
+          </label>
         </div>
-      </header>
+      </div>
 
-      <section class="canvas-card">
-        <div class="message-card">
-          <h3>Generated Preview</h3>
-          <p id="statusText">Upload the clean photo, optionally upload the red guide photo, choose a preset, then click Generate AI Mockup.</p>
-          <p id="requirementText" class="message-emphasis">The app sends the photos to the local server, which calls OpenAI server-side using your API key.</p>
+      <!-- Canvas workspace -->
+      <div id="canvasArea" class="canvas-area hidden">
+        <div class="canvas-toolbar">
+          <div class="toolbar-left">
+            <span id="modeIndicator" class="mode-badge">Preview</span>
+            <button id="viewToggleBtn" class="small-btn" type="button">📐 Edit Roofline</button>
+          </div>
+          <div class="toolbar-right">
+            <div id="previewPreset" class="preview-preset-badge"></div>
+          </div>
         </div>
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <img id="housePhoto" alt="House photo">
+          <canvas id="drawCanvas"></canvas>
+          <div id="canvasTip" class="canvas-tip hidden">
+            Click to add points &nbsp;·&nbsp; Double-click or Enter to finish segment &nbsp;·&nbsp; Right-click to cancel
+          </div>
+        </div>
+      </div>
 
-        <div id="previewCard" class="preview-card">
+      <!-- AI preview (shown after generation) -->
+      <div id="aiResultArea" class="ai-result-area hidden">
+        <div class="preview-card">
           <div id="previewViewport" class="preview-viewport">
             <img id="originalPreview" alt="Original home photo">
             <img id="generatedPreview" alt="Generated lighting mockup">
@@ -81,7 +145,7 @@
             <input id="compareRange" type="range" min="0" max="100" value="100">
           </label>
         </div>
-
+        <button id="backToCanvasBtn" class="secondary-button" type="button">← Back to Canvas Tool</button>
         <div class="prompt-card">
           <div class="prompt-header">
             <h3>AI Request</h3>
@@ -89,7 +153,7 @@
           </div>
           <textarea id="promptOutput" readonly></textarea>
         </div>
-      </section>
+      </div>
     </main>
   </div>
 
