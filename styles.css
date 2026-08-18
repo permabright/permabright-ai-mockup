@@ -172,25 +172,6 @@ button.secondary-button {
 }
 button.secondary-button:hover { background: var(--panel-2); }
 
-/* ── Draw button ─────────────────────────────────────── */
-
-.draw-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--panel-3);
-  color: var(--text);
-  border: 1px solid rgba(255,255,255,.08);
-  margin-bottom: 8px;
-}
-
-.draw-btn.is-active {
-  background: rgba(231,76,60,.18);
-  border-color: rgba(231,76,60,.5);
-  color: #ff8880;
-  box-shadow: 0 0 0 2px rgba(231,76,60,.25);
-}
 
 /* ── Tool row ────────────────────────────────────────── */
 
@@ -612,6 +593,108 @@ textarea {
   padding: 14px;
   line-height: 1.55;
   font-size: .82rem;
+}
+
+/* ── Auto-detect button ──────────────────────────────── */
+
+.detect-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #1a2a3a 0%, #1e3048 100%);
+  border: 1px solid rgba(80,160,255,.35);
+  color: #90c8ff;
+  font-weight: 700;
+  font-size: .86rem;
+  margin-bottom: 10px;
+  transition: background .2s, border-color .2s, opacity .15s;
+}
+
+.detect-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1e3045 0%, #233857 100%);
+  border-color: rgba(80,160,255,.6);
+}
+
+.detect-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/* ── Draw / Edit mode tool buttons ───────────────────── */
+
+.draw-btn, .edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--panel-3);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,.08);
+  font-size: .82rem;
+  margin: 0;
+}
+
+.draw-btn.is-active {
+  background: rgba(231,76,60,.18);
+  border-color: rgba(231,76,60,.5);
+  color: #ff8880;
+  box-shadow: 0 0 0 2px rgba(231,76,60,.2);
+}
+
+.edit-btn.is-active {
+  background: rgba(80,160,255,.15);
+  border-color: rgba(80,160,255,.45);
+  color: #90c8ff;
+  box-shadow: 0 0 0 2px rgba(80,160,255,.18);
+}
+
+.edit-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── Mode badge — edit ───────────────────────────────── */
+
+.mode-edit {
+  background: rgba(80,160,255,.14);
+  color: #90c8ff;
+  border: 1px solid rgba(80,160,255,.3);
+}
+
+/* ── Night mode photo filter ─────────────────────────── */
+
+.canvas-wrapper img.night-mode {
+  filter: brightness(0.18) saturate(0.15);
+  transition: filter 0.5s ease;
+}
+
+.canvas-wrapper img {
+  transition: filter 0.5s ease;
+}
+
+/* ── Night mode toggle (toolbar) ─────────────────────── */
+
+.night-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .76rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.1);
+  background: var(--panel-3);
+  transition: color .2s, border-color .2s, background .2s;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.night-toggle input { display: none; }
+
+.night-toggle:has(input:checked) {
+  color: #b0c8ff;
+  border-color: rgba(100,150,255,.4);
+  background: rgba(60,100,200,.15);
 }
 
 /* ── Utility ─────────────────────────────────────────── */
