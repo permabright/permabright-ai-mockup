@@ -172,25 +172,6 @@ button.secondary-button {
 }
 button.secondary-button:hover { background: var(--panel-2); }
 
-/* ── Draw button ─────────────────────────────────────── */
-
-.draw-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--panel-3);
-  color: var(--text);
-  border: 1px solid rgba(255,255,255,.08);
-  margin-bottom: 8px;
-}
-
-.draw-btn.is-active {
-  background: rgba(231,76,60,.18);
-  border-color: rgba(231,76,60,.5);
-  color: #ff8880;
-  box-shadow: 0 0 0 2px rgba(231,76,60,.25);
-}
 
 /* ── Tool row ────────────────────────────────────────── */
 
@@ -612,6 +593,224 @@ textarea {
   padding: 14px;
   line-height: 1.55;
   font-size: .82rem;
+}
+
+/* ── Auto-detect button ──────────────────────────────── */
+
+.detect-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #1a2a3a 0%, #1e3048 100%);
+  border: 1px solid rgba(80,160,255,.35);
+  color: #90c8ff;
+  font-weight: 700;
+  font-size: .86rem;
+  margin-bottom: 10px;
+  transition: background .2s, border-color .2s, opacity .15s;
+}
+
+.detect-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1e3045 0%, #233857 100%);
+  border-color: rgba(80,160,255,.6);
+}
+
+.detect-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/* ── Draw / Edit mode tool buttons ───────────────────── */
+
+.draw-btn, .edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--panel-3);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,.08);
+  font-size: .82rem;
+  margin: 0;
+}
+
+.draw-btn.is-active {
+  background: rgba(231,76,60,.18);
+  border-color: rgba(231,76,60,.5);
+  color: #ff8880;
+  box-shadow: 0 0 0 2px rgba(231,76,60,.2);
+}
+
+.edit-btn.is-active {
+  background: rgba(80,160,255,.15);
+  border-color: rgba(80,160,255,.45);
+  color: #90c8ff;
+  box-shadow: 0 0 0 2px rgba(80,160,255,.18);
+}
+
+.edit-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── Mode badge — edit ───────────────────────────────── */
+
+.mode-edit {
+  background: rgba(80,160,255,.14);
+  color: #90c8ff;
+  border: 1px solid rgba(80,160,255,.3);
+}
+
+/* ── Night mode photo filter ─────────────────────────── */
+
+.canvas-wrapper img.night-mode {
+  filter: brightness(0.18) saturate(0.15);
+  transition: filter 0.5s ease;
+}
+
+.canvas-wrapper img {
+  transition: filter 0.5s ease;
+}
+
+/* ── Night mode toggle (toolbar) ─────────────────────── */
+
+.night-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .76rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.1);
+  background: var(--panel-3);
+  transition: color .2s, border-color .2s, background .2s;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.night-toggle input { display: none; }
+
+.night-toggle:has(input:checked) {
+  color: #b0c8ff;
+  border-color: rgba(100,150,255,.4);
+  background: rgba(60,100,200,.15);
+}
+
+/* ── Detecting overlay ───────────────────────────────── */
+
+.detecting-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 20, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 20;
+  border-radius: 0;
+}
+
+.detecting-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: rgba(255,255,255,.9);
+  font-weight: 600;
+  font-size: .9rem;
+  letter-spacing: .04em;
+}
+
+.detect-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(80,160,255,.2);
+  border-top-color: #60a8ff;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Floating canvas toolbar ─────────────────────────── */
+
+.canvas-float-bar {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(13, 17, 23, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 999px;
+  padding: 5px 10px;
+  z-index: 10;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  white-space: nowrap;
+}
+
+.float-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.float-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255,255,255,.12);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.float-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 600;
+  color: rgba(255,255,255,.75);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  width: auto;
+}
+
+.float-btn:hover {
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  opacity: 1;
+}
+
+.float-btn:active { transform: scale(.96); }
+
+.float-btn.is-active {
+  background: rgba(255,80,60,.18);
+  border-color: rgba(255,80,60,.4);
+  color: #ff9988;
+}
+
+.float-btn-danger {
+  color: rgba(255,100,80,.7);
+}
+.float-btn-danger:hover {
+  background: rgba(255,80,60,.14);
+  color: #ff8877;
+}
+
+.float-btn-detect {
+  color: #90c8ff;
+}
+.float-btn-detect:hover {
+  background: rgba(80,150,255,.14);
+  color: #a8d8ff;
 }
 
 /* ── Utility ─────────────────────────────────────────── */

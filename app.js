@@ -88,6 +88,9 @@ const state = {
   photoDataUrl: '',
 
   isDrawMode: false,
+  editMode: false,
+  nightMode: false,
+  detectingRoofline: false,
   showLights: true,
   segments: [],   // completed [{x,y}][]
   current:  [],   // in-progress [{x,y}]
@@ -95,6 +98,10 @@ const state = {
   mouseY: null,
   canvasW: 0,
   canvasH: 0,
+
+  dragTarget: null,   // { segIdx, ptIdx } when dragging in edit mode
+  hoverTarget: null,  // { type:'point'|'segment', segIdx, ptIdx?, insertAfter?, insertPt? }
+  stars: null,        // pre-generated star positions for night mode
 
   preset: 'christmas',
   pattern: 'all',
@@ -126,8 +133,14 @@ const refs = {
   canvasTip:     document.getElementById('canvasTip'),
 
   drawToggleBtn: document.getElementById('drawToggleBtn'),
+  editToggleBtn: document.getElementById('editToggleBtn'),
+  reDetectBtn:   document.getElementById('reDetectBtn'),
   undoBtn:       document.getElementById('undoBtn'),
   clearBtn:      document.getElementById('clearBtn'),
+  canvasFloatBar:document.getElementById('canvasFloatBar'),
+  detectingOverlay: document.getElementById('detectingOverlay'),
+  nightModeCheck:document.getElementById('nightModeCheck'),
+  nightToggleLabel: document.getElementById('nightToggleLabel'),
   viewToggleBtn: document.getElementById('viewToggleBtn'),
   modeIndicator: document.getElementById('modeIndicator'),
   previewPreset: document.getElementById('previewPreset'),
@@ -248,6 +261,13 @@ function wireEvents() {
   refs.photoInput2.addEventListener('change', e => handlePhotoFile(e.target.files?.[0]));
 
   refs.drawToggleBtn.addEventListener('click', toggleDrawMode);
+  refs.editToggleBtn.addEventListener('click', toggleEditMode);
+  refs.reDetectBtn.addEventListener('click', autoDetectRoofline);
+  refs.nightModeCheck.addEventListener('change', () => {
+    state.nightMode = refs.nightModeCheck.checked;
+    if (state.nightMode && !state.stars) generateStars();
+    render();
+  });
   refs.undoBtn.addEventListener('click', undo);
   refs.clearBtn.addEventListener('click', clearAll);
   refs.viewToggleBtn.addEventListener('click', () => {
@@ -263,15 +283,18 @@ function wireEvents() {
 
   // Canvas drawing events
   const c = refs.canvas;
+  c.addEventListener('mousedown',  onCanvasMouseDown);
+  c.addEventListener('mouseup',    onCanvasMouseUp);
   c.addEventListener('click',      onCanvasClick);
   c.addEventListener('dblclick',   onCanvasDoubleClick);
   c.addEventListener('mousemove',  onCanvasMouseMove);
   c.addEventListener('mouseleave', onCanvasMouseLeave);
-  c.addEventListener('contextmenu', e => { e.preventDefault(); if (state.isDrawMode) finishSegment(); });
+  c.addEventListener('contextmenu', onCanvasContextMenu);
 
   // Touch support for tablets / phones
   c.addEventListener('touchstart', onTouchStart, { passive: false });
   c.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  c.addEventListener('touchend',   onTouchEnd,   { passive: false });
 
   // AI panel
   refs.guidePhotoInput.addEventListener('change', e => {
@@ -325,7 +348,11 @@ async function handlePhotoFile(file) {
     refs.canvasArea.classList.remove('hidden');
 
     refs.housePhoto.onload = () => {
-      setTimeout(() => { resizeCanvas(); render(); }, 30);
+      setTimeout(() => {
+        resizeCanvas();
+        render();
+        autoDetectRoofline(); // auto-detect immediately after photo loads
+      }, 30);
     };
   };
   reader.readAsDataURL(file);
@@ -362,10 +389,23 @@ function resizeCanvas() {
 
 let _lastClickTime = 0;
 
+function onCanvasMouseDown(e) {
+  if (state.editMode) onEditMouseDown(e);
+}
+
+function onCanvasMouseUp(e) {
+  if (state.editMode) onEditMouseUp(e);
+}
+
+function onCanvasContextMenu(e) {
+  e.preventDefault();
+  if (state.isDrawMode) { finishSegment(); render(); }
+  else if (state.editMode) onEditRightClick(e);
+}
+
 function onCanvasClick(e) {
   if (!state.isDrawMode) return;
   const now = Date.now();
-  // Ignore the click that comes right before a dblclick
   if (now - _lastClickTime < 380) return;
   _lastClickTime = now;
   state.current.push(getCanvasPos(e));
@@ -374,7 +414,6 @@ function onCanvasClick(e) {
 
 function onCanvasDoubleClick(e) {
   if (!state.isDrawMode) return;
-  // Remove the extra point added by the preceding click event
   if (state.current.length > 0) state.current.pop();
   finishSegment();
 }
@@ -383,12 +422,14 @@ function onCanvasMouseMove(e) {
   const pos = getCanvasPos(e);
   state.mouseX = pos.x;
   state.mouseY = pos.y;
+  if (state.editMode) { onEditMouseMove(e); return; }
   if (state.isDrawMode) renderCanvas();
 }
 
 function onCanvasMouseLeave() {
   state.mouseX = null;
   state.mouseY = null;
+  if (state.editMode) { state.hoverTarget = null; state.dragTarget = null; renderCanvas(); return; }
   if (state.isDrawMode) renderCanvas();
 }
 
@@ -419,13 +460,23 @@ function onTouchStart(e) {
 }
 
 function onTouchMove(e) {
-  if (!state.isDrawMode) return;
   e.preventDefault();
   const t = e.touches[0];
   const pos = getCanvasPosFromXY(t.clientX, t.clientY);
   state.mouseX = pos.x;
   state.mouseY = pos.y;
-  renderCanvas();
+  if (state.editMode && state.dragTarget) {
+    const { segIdx, ptIdx } = state.dragTarget;
+    state.segments[segIdx][ptIdx] = pos;
+    renderCanvas();
+    updateStats();
+    return;
+  }
+  if (state.isDrawMode) renderCanvas();
+}
+
+function onTouchEnd(e) {
+  if (state.editMode) { state.dragTarget = null; return; }
 }
 
 function getCanvasPos(e) {
@@ -449,7 +500,25 @@ function toggleDrawMode() {
   } else {
     if (!state.photoDataUrl) return;
     state.isDrawMode = true;
+    state.editMode = false;
     state.showLights = false;
+    state.hoverTarget = null;
+    state.dragTarget = null;
+  }
+  render();
+}
+
+function toggleEditMode() {
+  if (state.editMode) {
+    state.editMode = false;
+    state.hoverTarget = null;
+    state.dragTarget = null;
+  } else {
+    if (!state.photoDataUrl) return;
+    state.editMode = true;
+    state.isDrawMode = false;
+    state.showLights = false;
+    finishSegment();
   }
   render();
 }
@@ -484,28 +553,44 @@ function clearAll() {
 // ============================================================
 
 function render() {
-  // Draw mode toggle button
-  refs.drawToggleBtn.classList.toggle('is-active', state.isDrawMode);
-  refs.drawToggleBtn.innerHTML = state.isDrawMode
-    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Done Drawing`
-    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><circle cx="11" cy="11" r="2"/></svg> Draw Roofline`;
+  const inDraw = state.isDrawMode;
+  const inEdit = state.editMode;
+  const inAnyEdit = inDraw || inEdit;
+
+  // Detecting overlay
+  refs.detectingOverlay.classList.toggle('hidden', !state.detectingRoofline);
+
+  // Floating toolbar visibility
+  refs.canvasFloatBar.classList.toggle('hidden', !state.photoDataUrl || state.detectingRoofline);
+
+  // Float bar button states
+  refs.drawToggleBtn.classList.toggle('is-active', inDraw);
+  refs.editToggleBtn.classList.toggle('is-active', inEdit);
 
   // Canvas cursor
-  refs.canvas.style.cursor = state.isDrawMode ? 'crosshair' : 'default';
+  if (!inDraw && !inEdit) refs.canvas.style.cursor = 'default';
+  else if (inDraw) refs.canvas.style.cursor = 'crosshair';
+  // edit mode cursor managed dynamically in onEditMouseMove
 
   // Toolbar
-  const inDraw = state.isDrawMode;
-  refs.modeIndicator.textContent = inDraw ? 'Drawing' : (state.showLights ? 'Lights Preview' : 'Roofline');
-  refs.modeIndicator.className = 'mode-badge ' + (inDraw ? 'mode-draw' : 'mode-preview');
-  refs.viewToggleBtn.textContent = state.showLights ? '📐 Edit Roofline' : '💡 Preview Lights';
-  refs.viewToggleBtn.classList.toggle('hidden', inDraw);
+  refs.modeIndicator.textContent = inDraw ? 'Drawing' : inEdit ? 'Editing' : (state.showLights ? 'Lights Preview' : 'Roofline');
+  refs.modeIndicator.className = 'mode-badge ' + (inDraw ? 'mode-draw' : inEdit ? 'mode-edit' : 'mode-preview');
+  refs.viewToggleBtn.textContent = state.showLights ? '📐 Roofline' : '💡 Preview Lights';
+  refs.viewToggleBtn.classList.toggle('hidden', inAnyEdit);
+
+  // Night mode toggle — only relevant in lights preview
+  refs.nightToggleLabel.classList.toggle('hidden', inAnyEdit || !state.showLights);
 
   // Preset badge in toolbar
   const p = PRESETS[state.preset];
-  refs.previewPreset.textContent = state.showLights && !inDraw ? `${p.emoji} ${p.name}` : '';
+  refs.previewPreset.textContent = state.showLights && !inAnyEdit ? `${p.emoji} ${p.name}` : '';
 
   // Canvas tip
   refs.canvasTip.classList.toggle('hidden', !inDraw);
+
+  // Night mode on photo
+  const showNight = state.nightMode && state.showLights && !inAnyEdit;
+  refs.housePhoto.classList.toggle('night-mode', showNight);
 
   // Preset buttons
   for (const btn of refs.presetButtons.querySelectorAll('.preset-btn'))
@@ -515,16 +600,20 @@ function render() {
   for (const btn of refs.patternButtons.querySelectorAll('.pattern-btn'))
     btn.classList.toggle('is-active', btn.dataset.key === state.pattern);
 
-  // Draw hint
+  // Draw hint in sidebar
   if (!state.photoDataUrl) {
-    refs.drawHint.textContent = 'Upload a photo to start drawing.';
+    refs.drawHint.textContent = 'Upload a photo — roofline detects automatically.';
+  } else if (state.detectingRoofline) {
+    refs.drawHint.textContent = 'Detecting roofline with AI…';
   } else if (inDraw) {
-    refs.drawHint.textContent = 'Click to add points · Double-click or Enter to finish · Right-click to cancel';
+    refs.drawHint.textContent = 'Click on the canvas to add points · Double-click to finish';
+  } else if (inEdit) {
+    refs.drawHint.textContent = 'Drag points · Click line to insert · Right-click to delete';
   } else if (state.segments.length > 0) {
     updateStats();
-    return; // updateStats calls renderCanvas
+    return;
   } else {
-    refs.drawHint.textContent = 'Click "Draw Roofline" then click along the rooflines.';
+    refs.drawHint.textContent = 'Use "Re-detect" or "Draw" from the canvas toolbar.';
   }
 
   renderCanvas();
@@ -534,7 +623,7 @@ function updateStats() {
   if (state.segments.length === 0) {
     refs.bulbCount.textContent = 'Draw the roofline to see bulb count.';
     refs.drawHint.textContent = state.photoDataUrl
-      ? 'Click "Draw Roofline" then click along the rooflines.'
+      ? 'Use "Re-detect" or "Draw" from the canvas toolbar.'
       : 'Upload a photo to start drawing.';
     return;
   }
@@ -564,9 +653,10 @@ function renderCanvas() {
   const ctx = refs.canvas.getContext('2d');
   ctx.clearRect(0, 0, refs.canvas.width, refs.canvas.height);
 
-  if (state.isDrawMode || !state.showLights) {
+  if (state.isDrawMode || state.editMode || !state.showLights) {
     renderRouteLines(ctx);
   } else {
+    if (state.nightMode) drawStars(ctx);
     renderLights(ctx);
   }
 }
@@ -602,6 +692,35 @@ function renderRouteLines(ctx) {
       ctx.shadowBlur  = 0;
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  // Edit mode hover highlights
+  if (state.editMode && state.hoverTarget) {
+    const ht = state.hoverTarget;
+    if (ht.type === 'point') {
+      const pt = state.segments[ht.segIdx]?.[ht.ptIdx];
+      if (pt) {
+        ctx.fillStyle   = '#ffffff';
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth   = 2.5;
+        ctx.shadowColor = '#ff4444';
+        ctx.shadowBlur  = 8;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    } else if (ht.type === 'segment' && ht.insertPt) {
+      ctx.fillStyle   = 'rgba(255, 190, 50, 0.95)';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth   = 1.5;
+      ctx.shadowBlur  = 0;
+      ctx.beginPath();
+      ctx.arc(ht.insertPt.x, ht.insertPt.y, 5.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -915,6 +1034,190 @@ function renderCompare() {
   const hasGen = Boolean(state.generatedImageDataUrl);
   refs.previewViewport.classList.toggle('has-original', Boolean(state.photoDataUrl));
   refs.previewViewport.classList.toggle('has-generated', hasGen);
+}
+
+// ============================================================
+// AUTO-DETECT ROOFLINE
+// ============================================================
+
+async function autoDetectRoofline() {
+  if (!state.photoDataUrl || state.detectingRoofline) return;
+  state.detectingRoofline = true;
+  state.isDrawMode = false;
+  state.editMode = false;
+  render();
+
+  try {
+    const res = await fetch('/api/detect-roofline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photoDataUrl: state.photoDataUrl }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Detection failed');
+
+    const bounds = getImageBoundsInCanvas(refs.housePhoto.naturalWidth, refs.housePhoto.naturalHeight);
+    if (!bounds) throw new Error('Canvas not ready');
+
+    // Map fractional coords to canvas coords
+    state.segments = data.segments
+      .filter(seg => Array.isArray(seg) && seg.length >= 2)
+      .map(seg => seg.map(pt => ({
+        x: bounds.x + pt.x * bounds.w,
+        y: bounds.y + pt.y * bounds.h,
+      })));
+    state.current  = [];
+    state.isDrawMode = false;
+    state.editMode   = true;  // drop into edit mode so user can refine
+    state.showLights = false;
+    state.hoverTarget = null;
+    state.dragTarget  = null;
+
+    updateStats();
+    render();
+  } catch (err) {
+    alert(`Roofline detection failed: ${err.message}\n\nMake sure OPENAI_API_KEY is set on the server.`);
+  } finally {
+    state.detectingRoofline = false;
+    render();
+  }
+}
+
+// ============================================================
+// EDIT MODE HANDLERS
+// ============================================================
+
+function findNearestPoint(x, y, threshold = 14) {
+  let best = null, bestDist = threshold;
+  for (let si = 0; si < state.segments.length; si++) {
+    for (let pi = 0; pi < state.segments[si].length; pi++) {
+      const pt = state.segments[si][pi];
+      const d = Math.hypot(pt.x - x, pt.y - y);
+      if (d < bestDist) { bestDist = d; best = { segIdx: si, ptIdx: pi }; }
+    }
+  }
+  return best;
+}
+
+function findNearestSegment(x, y, threshold = 10) {
+  let best = null, bestDist = threshold;
+  for (let si = 0; si < state.segments.length; si++) {
+    const seg = state.segments[si];
+    for (let pi = 0; pi < seg.length - 1; pi++) {
+      const { dist, t } = pointToSegmentDist(x, y, seg[pi].x, seg[pi].y, seg[pi+1].x, seg[pi+1].y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = {
+          segIdx: si,
+          insertAfter: pi,
+          insertPt: {
+            x: seg[pi].x + (seg[pi+1].x - seg[pi].x) * t,
+            y: seg[pi].y + (seg[pi+1].y - seg[pi].y) * t,
+          }
+        };
+      }
+    }
+  }
+  return best;
+}
+
+function pointToSegmentDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 0.001) return { dist: Math.hypot(px - ax, py - ay), t: 0 };
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return { dist: Math.hypot(px - (ax + dx * t), py - (ay + dy * t)), t };
+}
+
+function onEditMouseDown(e) {
+  const pos = getCanvasPos(e);
+  const nearPt = findNearestPoint(pos.x, pos.y);
+  if (nearPt) {
+    state.dragTarget = nearPt;
+    refs.canvas.style.cursor = 'grabbing';
+    return;
+  }
+  const nearSeg = findNearestSegment(pos.x, pos.y);
+  if (nearSeg) {
+    state.segments[nearSeg.segIdx].splice(nearSeg.insertAfter + 1, 0, { ...nearSeg.insertPt });
+    state.dragTarget = { segIdx: nearSeg.segIdx, ptIdx: nearSeg.insertAfter + 1 };
+    state.hoverTarget = null;
+    refs.canvas.style.cursor = 'grabbing';
+    renderCanvas();
+    updateStats();
+  }
+}
+
+function onEditMouseMove(e) {
+  const pos = getCanvasPos(e);
+  if (state.dragTarget) {
+    const { segIdx, ptIdx } = state.dragTarget;
+    if (state.segments[segIdx]) state.segments[segIdx][ptIdx] = { x: pos.x, y: pos.y };
+    renderCanvas();
+    updateStats();
+    return;
+  }
+  const nearPt  = findNearestPoint(pos.x, pos.y, 16);
+  const nearSeg = nearPt ? null : findNearestSegment(pos.x, pos.y, 12);
+  state.hoverTarget = nearPt  ? { type: 'point',   ...nearPt  }
+                    : nearSeg ? { type: 'segment', ...nearSeg }
+                    : null;
+  refs.canvas.style.cursor = nearPt ? 'grab' : nearSeg ? 'cell' : 'default';
+  renderCanvas();
+}
+
+function onEditMouseUp() {
+  state.dragTarget = null;
+  refs.canvas.style.cursor = state.hoverTarget?.type === 'point' ? 'grab' : 'default';
+}
+
+function onEditRightClick(e) {
+  const pos = getCanvasPos(e);
+  const nearPt = findNearestPoint(pos.x, pos.y, 18);
+  if (!nearPt) return;
+  const seg = state.segments[nearPt.segIdx];
+  seg.splice(nearPt.ptIdx, 1);
+  if (seg.length < 2) state.segments.splice(nearPt.segIdx, 1);
+  state.hoverTarget = null;
+  renderCanvas();
+  updateStats();
+}
+
+// ============================================================
+// NIGHT MODE — STARS
+// ============================================================
+
+function generateStars() {
+  state.stars = [];
+  let seed = 12345;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  for (let i = 0; i < 220; i++) {
+    state.stars.push({
+      x: rand(),
+      y: rand() * 0.65,
+      r: rand() * 1.4 + 0.3,
+      a: rand() * 0.6 + 0.35,
+    });
+  }
+}
+
+function drawStars(ctx) {
+  const w = refs.canvas.width;
+  const h = refs.canvas.height;
+  for (const s of state.stars) {
+    ctx.globalAlpha = s.a;
+    ctx.fillStyle   = '#ffffff';
+    ctx.shadowColor = 'rgba(200,230,255,0.8)';
+    ctx.shadowBlur  = s.r * 2;
+    ctx.beginPath();
+    ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur  = 0;
 }
 
 // ============================================================

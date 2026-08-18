@@ -16,7 +16,7 @@
       <div class="brand">
         <p class="eyebrow">Permabright</p>
         <h1>Mockup Studio</h1>
-        <p class="lede">Draw the roofline, choose a preset, preview the lighting.</p>
+        <p class="lede">Upload a photo — roofline detects automatically.</p>
       </div>
 
       <!-- Step 1: Photo -->
@@ -32,21 +32,13 @@
         <p id="photoName" class="meta">No photo selected</p>
       </section>
 
-      <!-- Step 2: Roofline -->
+      <!-- Step 2: Roofline status -->
       <section class="panel">
         <div class="panel-header">
           <span class="step-num">2</span>
           <h2>Roofline</h2>
         </div>
-        <button id="drawToggleBtn" class="draw-btn" type="button">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
-          Draw Roofline
-        </button>
-        <div class="tool-row">
-          <button id="undoBtn" class="secondary-button tool-btn" type="button">↩ Undo</button>
-          <button id="clearBtn" class="secondary-button tool-btn" type="button">🗑 Clear</button>
-        </div>
-        <p class="meta" id="drawHint">Upload a photo to start drawing.</p>
+        <p class="meta" id="drawHint">Upload a photo — roofline detects automatically.</p>
       </section>
 
       <!-- Step 3: Preset -->
@@ -104,7 +96,7 @@
         <div class="empty-inner">
           <div class="upload-icon">🏠</div>
           <h2>Upload a House Photo</h2>
-          <p>Start by uploading a photo of the home to begin mapping the roofline and previewing permanent lighting.</p>
+          <p>The roofline will be detected automatically. Then adjust if needed and pick your lighting preset.</p>
           <label class="file-picker big-picker">
             <input id="photoInput2" type="file" accept="image/*">
             <span>Choose Photo</span>
@@ -114,20 +106,68 @@
 
       <!-- Canvas workspace -->
       <div id="canvasArea" class="canvas-area hidden">
+        <!-- Top toolbar: mode badge + lights toggle + night mode -->
         <div class="canvas-toolbar">
           <div class="toolbar-left">
             <span id="modeIndicator" class="mode-badge">Preview</span>
-            <button id="viewToggleBtn" class="small-btn" type="button">📐 Edit Roofline</button>
           </div>
           <div class="toolbar-right">
             <div id="previewPreset" class="preview-preset-badge"></div>
+            <label class="night-toggle" id="nightToggleLabel" title="Night preview">
+              <input type="checkbox" id="nightModeCheck">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              Night
+            </label>
+            <button id="viewToggleBtn" class="small-btn" type="button">💡 Preview Lights</button>
           </div>
         </div>
+
+        <!-- Canvas + floating tools -->
         <div class="canvas-wrapper" id="canvasWrapper">
           <img id="housePhoto" alt="House photo">
           <canvas id="drawCanvas"></canvas>
+
+          <!-- Detecting overlay -->
+          <div id="detectingOverlay" class="detecting-overlay hidden">
+            <div class="detecting-inner">
+              <div class="detect-spinner"></div>
+              <span>Detecting roofline…</span>
+            </div>
+          </div>
+
+          <!-- Floating toolbar — lives ON the canvas -->
+          <div id="canvasFloatBar" class="canvas-float-bar hidden">
+            <div class="float-group">
+              <button id="editToggleBtn" class="float-btn" type="button" title="Edit points — drag to move, click segment to insert, right-click to delete">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit
+              </button>
+              <button id="drawToggleBtn" class="float-btn" type="button" title="Draw new roofline segment">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
+                Draw
+              </button>
+            </div>
+            <div class="float-divider"></div>
+            <div class="float-group">
+              <button id="undoBtn" class="float-btn" type="button" title="Undo (Ctrl+Z)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+                Undo
+              </button>
+              <button id="clearBtn" class="float-btn float-btn-danger" type="button" title="Clear all roofline">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                Clear
+              </button>
+            </div>
+            <div class="float-divider"></div>
+            <button id="reDetectBtn" class="float-btn float-btn-detect" type="button" title="Re-run auto-detection">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Re-detect
+            </button>
+          </div>
+
+          <!-- Draw mode tip -->
           <div id="canvasTip" class="canvas-tip hidden">
-            Click to add points &nbsp;·&nbsp; Double-click or Enter to finish segment &nbsp;·&nbsp; Right-click to cancel
+            Click to add points &nbsp;·&nbsp; Double-click to finish &nbsp;·&nbsp; Right-click to cancel
           </div>
         </div>
       </div>

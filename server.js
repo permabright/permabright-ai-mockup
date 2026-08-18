@@ -23,6 +23,20 @@ const MIME_TYPES = {
 loadDotEnv();
 
 http.createServer((request, response) => {
+  if (request.method === "POST" && request.url === "/api/detect-roofline") {
+    collectJson(request)
+      .then((body) => detectRooflineWithAI(body))
+      .then((result) => {
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify(result));
+      })
+      .catch((error) => {
+        response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: error.message || "Detection failed" }));
+      });
+    return;
+  }
+
   if (request.method === "POST" && request.url === "/api/mockup") {
     collectJson(request)
       .then((body) => generateMockup(body))
@@ -101,6 +115,50 @@ function collectJson(request) {
     });
     request.on("error", reject);
   });
+}
+
+async function detectRooflineWithAI(body) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is required for roofline detection.");
+
+  const prompt = [
+    "Analyze this house photo and identify all visible roofline edges and eave lines where permanent lighting could be installed.",
+    "Return ONLY a valid JSON object with a 'segments' key.",
+    "Each segment is an array of {x, y} points where x and y are decimal fractions of the image width/height (0.0 to 1.0).",
+    "Trace the front-facing fascia/eave edge where the roof meets the sky — the lower edge of the roofline visible from this angle.",
+    "Each continuous run of roofline should be its own segment. Include 2-6 points per segment to follow curves and peaks.",
+    "Return 2-8 segments. Do not include ridge lines on top of the roof — only the front eave lines.",
+    'Example: {"segments": [[{"x":0.05,"y":0.42},{"x":0.35,"y":0.28},{"x":0.50,"y":0.22},{"x":0.65,"y":0.28},{"x":0.95,"y":0.42}]]}'
+  ].join(" ");
+
+  const result = await requestJson({
+    hostname: "api.openai.com",
+    path: "/v1/chat/completions",
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: {
+      model: "gpt-4o",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: body.photoDataUrl, detail: "high" } }
+        ]
+      }],
+      response_format: { type: "json_object" },
+      max_tokens: 2000
+    }
+  });
+
+  const content = result.choices?.[0]?.message?.content;
+  if (!content) throw new Error("No response from OpenAI.");
+  let parsed;
+  try { parsed = JSON.parse(content); } catch { throw new Error("OpenAI returned invalid JSON."); }
+  if (!Array.isArray(parsed.segments)) throw new Error("OpenAI response missing segments array.");
+  return { segments: parsed.segments };
 }
 
 async function generateMockup(body) {
