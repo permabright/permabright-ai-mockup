@@ -132,13 +132,15 @@ const refs = {
   canvas:        document.getElementById('drawCanvas'),
   canvasTip:     document.getElementById('canvasTip'),
 
-  autoDetectBtn: document.getElementById('autoDetectBtn'),
   drawToggleBtn: document.getElementById('drawToggleBtn'),
   editToggleBtn: document.getElementById('editToggleBtn'),
-  nightModeCheck:document.getElementById('nightModeCheck'),
-  nightToggleLabel: document.getElementById('nightToggleLabel'),
+  reDetectBtn:   document.getElementById('reDetectBtn'),
   undoBtn:       document.getElementById('undoBtn'),
   clearBtn:      document.getElementById('clearBtn'),
+  canvasFloatBar:document.getElementById('canvasFloatBar'),
+  detectingOverlay: document.getElementById('detectingOverlay'),
+  nightModeCheck:document.getElementById('nightModeCheck'),
+  nightToggleLabel: document.getElementById('nightToggleLabel'),
   viewToggleBtn: document.getElementById('viewToggleBtn'),
   modeIndicator: document.getElementById('modeIndicator'),
   previewPreset: document.getElementById('previewPreset'),
@@ -258,9 +260,9 @@ function wireEvents() {
   refs.photoInput.addEventListener('change', e => handlePhotoFile(e.target.files?.[0]));
   refs.photoInput2.addEventListener('change', e => handlePhotoFile(e.target.files?.[0]));
 
-  refs.autoDetectBtn.addEventListener('click', autoDetectRoofline);
   refs.drawToggleBtn.addEventListener('click', toggleDrawMode);
   refs.editToggleBtn.addEventListener('click', toggleEditMode);
+  refs.reDetectBtn.addEventListener('click', autoDetectRoofline);
   refs.nightModeCheck.addEventListener('change', () => {
     state.nightMode = refs.nightModeCheck.checked;
     if (state.nightMode && !state.stars) generateStars();
@@ -346,7 +348,11 @@ async function handlePhotoFile(file) {
     refs.canvasArea.classList.remove('hidden');
 
     refs.housePhoto.onload = () => {
-      setTimeout(() => { resizeCanvas(); render(); }, 30);
+      setTimeout(() => {
+        resizeCanvas();
+        render();
+        autoDetectRoofline(); // auto-detect immediately after photo loads
+      }, 30);
     };
   };
   reader.readAsDataURL(file);
@@ -551,17 +557,15 @@ function render() {
   const inEdit = state.editMode;
   const inAnyEdit = inDraw || inEdit;
 
-  // Auto-detect button
-  refs.autoDetectBtn.disabled = !state.photoDataUrl || state.detectingRoofline;
-  refs.autoDetectBtn.textContent = state.detectingRoofline
-    ? 'Detecting…'
-    : '✦ Auto-Detect Roofline';
+  // Detecting overlay
+  refs.detectingOverlay.classList.toggle('hidden', !state.detectingRoofline);
 
-  // Draw/edit toggle buttons
+  // Floating toolbar visibility
+  refs.canvasFloatBar.classList.toggle('hidden', !state.photoDataUrl || state.detectingRoofline);
+
+  // Float bar button states
   refs.drawToggleBtn.classList.toggle('is-active', inDraw);
   refs.editToggleBtn.classList.toggle('is-active', inEdit);
-  refs.editToggleBtn.disabled = !state.photoDataUrl;
-  refs.autoDetectBtn.classList.toggle('hidden', false);
 
   // Canvas cursor
   if (!inDraw && !inEdit) refs.canvas.style.cursor = 'default';
@@ -596,18 +600,20 @@ function render() {
   for (const btn of refs.patternButtons.querySelectorAll('.pattern-btn'))
     btn.classList.toggle('is-active', btn.dataset.key === state.pattern);
 
-  // Draw hint
+  // Draw hint in sidebar
   if (!state.photoDataUrl) {
-    refs.drawHint.textContent = 'Upload a photo to start drawing.';
+    refs.drawHint.textContent = 'Upload a photo — roofline detects automatically.';
+  } else if (state.detectingRoofline) {
+    refs.drawHint.textContent = 'Detecting roofline with AI…';
   } else if (inDraw) {
-    refs.drawHint.textContent = 'Click to add points · Double-click or Enter to finish · Right-click to cancel';
+    refs.drawHint.textContent = 'Click on the canvas to add points · Double-click to finish';
   } else if (inEdit) {
-    refs.drawHint.textContent = 'Drag points to adjust · Click segment to insert point · Right-click point to delete';
+    refs.drawHint.textContent = 'Drag points · Click line to insert · Right-click to delete';
   } else if (state.segments.length > 0) {
     updateStats();
     return;
   } else {
-    refs.drawHint.textContent = 'Auto-detect or draw the roofline to get started.';
+    refs.drawHint.textContent = 'Use "Re-detect" or "Draw" from the canvas toolbar.';
   }
 
   renderCanvas();
@@ -617,7 +623,7 @@ function updateStats() {
   if (state.segments.length === 0) {
     refs.bulbCount.textContent = 'Draw the roofline to see bulb count.';
     refs.drawHint.textContent = state.photoDataUrl
-      ? 'Click "Draw Roofline" then click along the rooflines.'
+      ? 'Use "Re-detect" or "Draw" from the canvas toolbar.'
       : 'Upload a photo to start drawing.';
     return;
   }
@@ -1037,6 +1043,8 @@ function renderCompare() {
 async function autoDetectRoofline() {
   if (!state.photoDataUrl || state.detectingRoofline) return;
   state.detectingRoofline = true;
+  state.isDrawMode = false;
+  state.editMode = false;
   render();
 
   try {
