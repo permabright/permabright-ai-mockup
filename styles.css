@@ -523,7 +523,8 @@ button.secondary-button:hover { background: var(--panel-2); }
 
 .preview-viewport {
   position: relative;
-  min-height: 380px;
+  width: 100%;
+  aspect-ratio: 3 / 2;
   overflow: hidden;
   border-radius: 14px;
   background: #080c10;
@@ -535,7 +536,7 @@ button.secondary-button:hover { background: var(--panel-2); }
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   display: none;
 }
 
