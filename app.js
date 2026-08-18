@@ -1117,54 +1117,77 @@ function snapToEdges(segments, bounds) {
   const ih  = img.naturalHeight;
   if (!iw || !ih) return segments;
 
-  // Render image to offscreen canvas to read pixels
+  // Render image to offscreen canvas (downscaled for speed)
+  const SCALE = Math.min(1, 800 / Math.max(iw, ih));
+  const sw = Math.round(iw * SCALE);
+  const sh = Math.round(ih * SCALE);
   const oc  = document.createElement('canvas');
-  oc.width  = iw;
-  oc.height = ih;
+  oc.width  = sw;
+  oc.height = sh;
   const ctx = oc.getContext('2d');
-  ctx.drawImage(img, 0, 0);
-  const px = ctx.getImageData(0, 0, iw, ih).data;
+  ctx.drawImage(img, 0, 0, sw, sh);
+  const px = ctx.getImageData(0, 0, sw, sh).data;
 
   const gray = (x, y) => {
-    x = Math.max(0, Math.min(iw - 1, Math.round(x)));
-    y = Math.max(0, Math.min(ih - 1, Math.round(y)));
-    const i = (y * iw + x) * 4;
+    x = Math.max(0, Math.min(sw - 1, Math.round(x)));
+    y = Math.max(0, Math.min(sh - 1, Math.round(y)));
+    const i = (y * sw + x) * 4;
     return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
   };
 
-  // Gradient score biased toward HORIZONTAL edges (= roof eave lines)
-  const score = (x, y) => {
-    const gx = Math.abs(gray(x + 1, y) - gray(x - 1, y));
-    const gy = Math.abs(gray(x, y + 1) - gray(x, y - 1));
-    return gy * 2.0 + gx * 0.5; // prefer horizontal edges
+  // Horizontal edge strength at a point (Sobel gy, averaged over a strip width)
+  const hEdge = (x, y) => {
+    let sum = 0;
+    for (let dx = -4; dx <= 4; dx++) {
+      sum += Math.abs(gray(x + dx, y + 1) - gray(x + dx, y - 1));
+    }
+    return sum;
   };
 
-  // Canvas-to-image scale
-  const sx = iw / bounds.w;
-  const sy = ih / bounds.h;
+  // Build a column-averaged horizontal-edge profile across the image.
+  // For each row y (skipping top 15% sky), compute mean edge strength.
+  const skyMinY = Math.round(sh * 0.12);
+  const maxY    = Math.round(sh * 0.88);
+  const rowScore = new Float32Array(sh);
+  for (let y = skyMinY; y < maxY; y++) {
+    let s = 0;
+    const step = Math.max(1, Math.round(sw / 40));
+    for (let x = step; x < sw - step; x += step) s += hEdge(x, y);
+    rowScore[y] = s;
+  }
 
-  // Search ±RADIUS canvas pixels around each point
-  const RADIUS = 28;
-  const STEP   = 2; // sample every 2 image pixels for speed
+  // Canvas → scaled-image coordinate transforms
+  const sxC = sw / bounds.w; // canvas px → scaled img px
+  const syC = sh / bounds.h;
+
+  // For each GPT point: scan a ±X-strip of columns around its x,
+  // find the row with the strongest horizontal edge in the valid range,
+  // biased toward rows near the GPT-supplied y (prefer GPT hint when edge is strong).
+  const X_STRIP = Math.round(sw * 0.04); // ±4% of width
+  const STEP    = 2;
 
   return segments.map(seg => seg.map(pt => {
-    const imgX = (pt.x - bounds.x) * sx;
-    const imgY = (pt.y - bounds.y) * sy;
-    const rX   = RADIUS * sx;
-    const rY   = RADIUS * sy;
+    const imgX = (pt.x - bounds.x) * sxC;
+    const imgY = (pt.y - bounds.y) * syC;
 
-    let bestScore = -1, bestX = imgX, bestY = imgY;
-    for (let dy = -rY; dy <= rY; dy += STEP) {
-      for (let dx = -rX; dx <= rX; dx += STEP) {
-        if (dx * dx / (rX * rX) + dy * dy / (rY * rY) > 1) continue; // ellipse search
-        const s = score(imgX + dx, imgY + dy);
-        if (s > bestScore) { bestScore = s; bestX = imgX + dx; bestY = imgY + dy; }
-      }
+    // Gather edge scores in the strip around imgX
+    const x0 = Math.max(1, Math.round(imgX) - X_STRIP);
+    const x1 = Math.min(sw - 2, Math.round(imgX) + X_STRIP);
+
+    // Score each row in the valid band
+    let bestScore = -1, bestY = imgY;
+    for (let y = skyMinY; y < maxY; y += STEP) {
+      let s = 0;
+      for (let x = x0; x <= x1; x += STEP) s += hEdge(x, y);
+      // Apply a mild distance penalty to bias toward the GPT hint
+      const dist = Math.abs(y - imgY) / sh;
+      const penalized = s * (1 - 0.3 * dist);
+      if (penalized > bestScore) { bestScore = penalized; bestY = y; }
     }
 
     return {
-      x: bestX / sx + bounds.x,
-      y: bestY / sy + bounds.y,
+      x: pt.x, // keep original x from GPT
+      y: bestY / syC + bounds.y,
     };
   }));
 }
