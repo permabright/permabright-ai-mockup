@@ -655,10 +655,81 @@ function renderCanvas() {
 
   if (state.isDrawMode || state.editMode || !state.showLights) {
     renderRouteLines(ctx);
+    // Show magnifier loupe when dragging a point in edit mode
+    if (state.editMode && state.dragTarget && state.mouseX !== null) {
+      drawLoupe(ctx, state.mouseX, state.mouseY);
+    }
   } else {
     if (state.nightMode) drawStars(ctx);
     renderLights(ctx);
   }
+}
+
+function drawLoupe(ctx, cx, cy) {
+  const RADIUS = 72;
+  const ZOOM   = 3.5;
+  const img    = refs.housePhoto;
+  const bounds = getImageBoundsInCanvas(img.naturalWidth, img.naturalHeight);
+  if (!bounds) return;
+
+  // Position loupe above the cursor so it doesn't obscure the work area
+  const lx = cx;
+  const ly = cy - RADIUS - 28;
+
+  ctx.save();
+
+  // Clip to circle
+  ctx.beginPath();
+  ctx.arc(lx, ly, RADIUS, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Draw zoomed slice of the house photo
+  const srcW = (RADIUS * 2) / ZOOM;
+  const srcH = (RADIUS * 2) / ZOOM;
+  const imgX = (cx - bounds.x) / bounds.w * img.naturalWidth;
+  const imgY = (cy - bounds.y) / bounds.h * img.naturalHeight;
+  const scaleX = img.naturalWidth  / bounds.w;
+  const scaleY = img.naturalHeight / bounds.h;
+  ctx.drawImage(
+    img,
+    imgX - srcW * scaleX / 2, imgY - srcH * scaleY / 2,
+    srcW * scaleX, srcH * scaleY,
+    lx - RADIUS, ly - RADIUS, RADIUS * 2, RADIUS * 2
+  );
+
+  // Draw the canvas route lines zoomed inside the loupe
+  ctx.translate(lx - cx * ZOOM, ly - cy * ZOOM);
+  ctx.scale(ZOOM, ZOOM);
+  renderRouteLines(ctx);
+  ctx.restore();
+
+  // Loupe border
+  ctx.beginPath();
+  ctx.arc(lx, ly, RADIUS, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth   = 2;
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur  = 8;
+  ctx.stroke();
+  ctx.shadowBlur  = 0;
+
+  // Crosshair at center of loupe
+  ctx.strokeStyle = 'rgba(255, 60, 60, 0.9)';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(lx - 10, ly); ctx.lineTo(lx + 10, ly);
+  ctx.moveTo(lx, ly - 10); ctx.lineTo(lx, ly + 10);
+  ctx.stroke();
+
+  // Connector line from loupe to cursor
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(lx, ly + RADIUS);
+  ctx.lineTo(cx, cy);
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function renderRouteLines(ctx) {
@@ -1150,6 +1221,8 @@ function onEditMouseDown(e) {
 
 function onEditMouseMove(e) {
   const pos = getCanvasPos(e);
+  state.mouseX = pos.x;
+  state.mouseY = pos.y;
   if (state.dragTarget) {
     const { segIdx, ptIdx } = state.dragTarget;
     if (state.segments[segIdx]) state.segments[segIdx][ptIdx] = { x: pos.x, y: pos.y };

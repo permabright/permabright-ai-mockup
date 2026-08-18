@@ -122,14 +122,26 @@ async function detectRooflineWithAI(body) {
   if (!apiKey) throw new Error("OPENAI_API_KEY is required for roofline detection.");
 
   const prompt = [
-    "Analyze this house photo and identify all visible roofline edges and eave lines where permanent lighting could be installed.",
-    "Return ONLY a valid JSON object with a 'segments' key.",
-    "Each segment is an array of {x, y} points where x and y are decimal fractions of the image width/height (0.0 to 1.0).",
-    "Trace the front-facing fascia/eave edge where the roof meets the sky — the lower edge of the roofline visible from this angle.",
-    "Each continuous run of roofline should be its own segment. Include 2-6 points per segment to follow curves and peaks.",
-    "Return 2-8 segments. Do not include ridge lines on top of the roof — only the front eave lines.",
-    'Example: {"segments": [[{"x":0.05,"y":0.42},{"x":0.35,"y":0.28},{"x":0.50,"y":0.22},{"x":0.65,"y":0.28},{"x":0.95,"y":0.42}]]}'
-  ].join(" ");
+    "You are analyzing a house photo to find EAVE LINES for permanent LED lighting installation.",
+    "",
+    "WHAT TO TRACE: The bottom edge of the roof overhang — the line where the roof soffit/fascia meets the air above the walls. This is a horizontal or angled line that runs along the FRONT FACE of the house, typically partway up the image.",
+    "",
+    "WHAT NOT TO TRACE:",
+    "- DO NOT trace the roof ridge or peak (the topmost line at the very top of the roof — that is NOT where lights go)",
+    "- DO NOT place ANY points in the sky or above the roof surface",
+    "- DO NOT trace gutters, windows, walls, or decorative trim",
+    "- The eave/fascia line is always BELOW the roofline silhouette against the sky",
+    "",
+    "SPATIAL GUIDANCE:",
+    "- Eave lines are typically in the y=0.20 to y=0.60 range (middle portion of the photo, not the very top)",
+    "- If the house fills most of the frame, eaves are often around y=0.30 to y=0.55",
+    "- Each continuous eave run should be ONE segment with points every 8-12% along it",
+    "- A peaked/gabled house has eave lines that go DOWN toward the peak, then back down on the other side",
+    "- Flat/hip roof eaves run more horizontally",
+    "",
+    "Return ONLY valid JSON: {\"segments\": [[{\"x\":0.05,\"y\":0.45},{\"x\":0.25,\"y\":0.42},{\"x\":0.50,\"y\":0.38},{\"x\":0.75,\"y\":0.42},{\"x\":0.95,\"y\":0.45}]]}",
+    "x=0 left edge, x=1 right edge, y=0 top, y=1 bottom. Include 1-6 segments covering all visible eave runs on the front of the house."
+  ].join("\n");
 
   const result = await requestJson({
     hostname: "api.openai.com",
@@ -158,7 +170,16 @@ async function detectRooflineWithAI(body) {
   let parsed;
   try { parsed = JSON.parse(content); } catch { throw new Error("OpenAI returned invalid JSON."); }
   if (!Array.isArray(parsed.segments)) throw new Error("OpenAI response missing segments array.");
-  return { segments: parsed.segments };
+
+  // Filter obviously-wrong points (sky or off-image)
+  const cleaned = parsed.segments
+    .map(seg => seg.filter(pt =>
+      typeof pt.x === "number" && typeof pt.y === "number" &&
+      pt.x >= 0 && pt.x <= 1 && pt.y >= 0.1 && pt.y <= 0.95
+    ))
+    .filter(seg => seg.length >= 2);
+
+  return { segments: cleaned };
 }
 
 async function generateMockup(body) {
