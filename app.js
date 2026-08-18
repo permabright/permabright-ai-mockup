@@ -770,19 +770,36 @@ function renderAi() {
 // CAPTURE GUIDE PHOTO — render canvas lines onto image
 // ============================================================
 
+function showImageModal(dataUrl) {
+  let modal = document.getElementById('imageModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'imageModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px;';
+    const hint = document.createElement('p');
+    hint.textContent = 'Hold down on the image to save it to your photos';
+    hint.style.cssText = 'color:#fff;font-size:14px;margin:0;opacity:0.8;text-align:center;';
+    const img = document.createElement('img');
+    img.id = 'imageModalImg';
+    img.style.cssText = 'max-width:100%;max-height:80vh;border-radius:8px;object-fit:contain;';
+    const close = document.createElement('button');
+    close.textContent = '✕ Close';
+    close.style.cssText = 'background:rgba(255,255,255,0.15);color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:15px;cursor:pointer;';
+    close.onclick = () => modal.remove();
+    modal.appendChild(hint);
+    modal.appendChild(img);
+    modal.appendChild(close);
+    document.body.appendChild(modal);
+  }
+  document.getElementById('imageModalImg').src = dataUrl;
+}
+
 function saveAiImage() {
   if (!state.generatedImageDataUrl) {
     alert('Generate an AI mockup first.');
     return;
   }
-  const a = document.createElement('a');
-  a.href = state.generatedImageDataUrl;
-  a.download = 'permabright-mockup.jpg';
-  if (a.download !== undefined && !(/iPhone|iPad|iPod/i.test(navigator.userAgent))) {
-    a.click();
-  } else {
-    window.open(state.generatedImageDataUrl, '_blank');
-  }
+  showImageModal(state.generatedImageDataUrl);
 }
 
 function saveRooflinePhoto() {
@@ -792,15 +809,7 @@ function saveRooflinePhoto() {
   }
   const dataUrl = captureGuidePhoto();
   if (!dataUrl) return;
-  // Try native download first (desktop), fall back to new tab (iOS Safari)
-  const a = document.createElement('a');
-  a.href = dataUrl;
-  a.download = 'roofline-guide.jpg';
-  if (a.download !== undefined && !(/iPhone|iPad|iPod/i.test(navigator.userAgent))) {
-    a.click();
-  } else {
-    window.open(dataUrl, '_blank');
-  }
+  showImageModal(dataUrl);
 }
 
 function captureGuidePhoto() {
