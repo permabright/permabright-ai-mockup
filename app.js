@@ -160,6 +160,7 @@ const refs = {
   copyPromptButton: document.getElementById('copyPromptButton'),
 
   aiResultArea:    document.getElementById('aiResultArea'),
+  previewViewport: document.getElementById('previewViewport'),
   backToCanvasBtn: document.getElementById('backToCanvasBtn'),
   originalPreview: document.getElementById('originalPreview'),
   generatedPreview:document.getElementById('generatedPreview'),
