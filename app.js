@@ -143,6 +143,7 @@ const refs = {
 
   aiResultArea:    document.getElementById('aiResultArea'),
   previewViewport: document.getElementById('previewViewport'),
+  saveAiImageBtn:  document.getElementById('saveAiImageBtn'),
   backToCanvasBtn: document.getElementById('backToCanvasBtn'),
   originalPreview: document.getElementById('originalPreview'),
   generatedPreview:document.getElementById('generatedPreview'),
@@ -218,6 +219,7 @@ function wireEvents() {
   });
   refs.downloadBtn.addEventListener('click', downloadMockup);
   refs.saveRooflineBtn?.addEventListener('click', saveRooflinePhoto);
+  refs.saveAiImageBtn?.addEventListener('click', saveAiImage);
   refs.backToCanvasBtn.addEventListener('click', () => {
     refs.aiResultArea.classList.add('hidden');
     refs.canvasArea.classList.remove('hidden');
@@ -496,7 +498,7 @@ function renderRouteLines(ctx) {
       ctx.strokeStyle = 'rgba(255,30,30,0.95)';
       ctx.lineWidth   = 2;
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
+      ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -768,6 +770,21 @@ function renderAi() {
 // CAPTURE GUIDE PHOTO — render canvas lines onto image
 // ============================================================
 
+function saveAiImage() {
+  if (!state.generatedImageDataUrl) {
+    alert('Generate an AI mockup first.');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = state.generatedImageDataUrl;
+  a.download = 'permabright-mockup.jpg';
+  if (a.download !== undefined && !(/iPhone|iPad|iPod/i.test(navigator.userAgent))) {
+    a.click();
+  } else {
+    window.open(state.generatedImageDataUrl, '_blank');
+  }
+}
+
 function saveRooflinePhoto() {
   if (!state.photoDataUrl || !state.segments.length) {
     alert('Draw the roofline first.');
@@ -775,10 +792,15 @@ function saveRooflinePhoto() {
   }
   const dataUrl = captureGuidePhoto();
   if (!dataUrl) return;
+  // Try native download first (desktop), fall back to new tab (iOS Safari)
   const a = document.createElement('a');
   a.href = dataUrl;
   a.download = 'roofline-guide.jpg';
-  a.click();
+  if (a.download !== undefined && !(/iPhone|iPad|iPod/i.test(navigator.userAgent))) {
+    a.click();
+  } else {
+    window.open(dataUrl, '_blank');
+  }
 }
 
 function captureGuidePhoto() {
