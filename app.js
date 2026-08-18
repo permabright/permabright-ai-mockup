@@ -87,28 +87,22 @@ const GLOW_RADIUS  = 16;   // canvas px outer glow radius
 const state = {
   photoDataUrl: '',
 
-  isDrawMode: false,
-  editMode: false,
   nightMode: false,
-  detectingRoofline: false,
   showLights: true,
-  segments: [],   // completed [{x,y}][]
-  current:  [],   // in-progress [{x,y}]
+  segments: [],   // each segment is always [{x,y}, {x,y}] — exactly 2 points
   mouseX: null,
   mouseY: null,
   canvasW: 0,
   canvasH: 0,
 
-  dragTarget: null,   // { segIdx, ptIdx } when dragging in edit mode
-  hoverTarget: null,  // { type:'point'|'segment', segIdx, ptIdx?, insertAfter?, insertPt? }
-  stars: null,        // pre-generated star positions for night mode
+  // null | {type:'new', x0, y0} | {type:'endpoint', segIdx, ptIdx}
+  drawDrag: null,
+  stars: null,
 
   preset: 'christmas',
   pattern: 'all',
 
   // AI gen state
-  guidePhotoName: '',
-  guidePhotoDataUrl: '',
   aiPreset: 'accent',
   aiQuality: 'final',
   generatedImageDataUrl: '',
@@ -130,32 +124,19 @@ const refs = {
   canvasWrapper: document.getElementById('canvasWrapper'),
   housePhoto:    document.getElementById('housePhoto'),
   canvas:        document.getElementById('drawCanvas'),
-  canvasTip:     document.getElementById('canvasTip'),
 
-  drawToggleBtn: document.getElementById('drawToggleBtn'),
-  editToggleBtn: document.getElementById('editToggleBtn'),
-  reDetectBtn:   document.getElementById('reDetectBtn'),
+  drawRooflineBtn: document.getElementById('drawRooflineBtn'),
   undoBtn:       document.getElementById('undoBtn'),
   clearBtn:      document.getElementById('clearBtn'),
   canvasFloatBar:document.getElementById('canvasFloatBar'),
-  detectingOverlay: document.getElementById('detectingOverlay'),
-  nightModeCheck:document.getElementById('nightModeCheck'),
-  nightToggleLabel: document.getElementById('nightToggleLabel'),
   viewToggleBtn: document.getElementById('viewToggleBtn'),
   modeIndicator: document.getElementById('modeIndicator'),
   previewPreset: document.getElementById('previewPreset'),
   downloadBtn:   document.getElementById('downloadBtn'),
   bulbCount:     document.getElementById('bulbCount'),
-  drawHint:      document.getElementById('drawHint'),
 
-  presetButtons: document.getElementById('presetButtons'),
-  patternButtons:document.getElementById('patternButtons'),
-
-  // AI panel
-  guidePhotoInput:  document.getElementById('guidePhotoInput'),
-  guidePhotoName:   document.getElementById('guidePhotoName'),
-  qualityButtons:   document.getElementById('qualityButtons'),
   aiPresetButtons:  document.getElementById('aiPresetButtons'),
+  qualityButtons:   document.getElementById('qualityButtons'),
   generateButton:   document.getElementById('generateButton'),
   copyPromptButton: document.getElementById('copyPromptButton'),
 
@@ -175,8 +156,6 @@ const refs = {
 // ============================================================
 
 function boot() {
-  buildPresetButtons();
-  buildPatternButtons();
   buildAiPresetButtons();
   buildQualityButtons();
   wireEvents();
@@ -191,42 +170,6 @@ function boot() {
 // BUILD SIDEBAR UI
 // ============================================================
 
-function buildPresetButtons() {
-  refs.presetButtons.innerHTML = '';
-  for (const [key, preset] of Object.entries(PRESETS)) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'preset-btn secondary-button';
-    btn.dataset.key = key;
-    const swatches = preset.colors.slice(0, 4).map(c =>
-      `<span class="swatch" style="background:${c}"></span>`
-    ).join('');
-    btn.innerHTML = `
-      <span class="preset-emoji">${preset.emoji}</span>
-      <span class="preset-info">
-        <span class="preset-name">${preset.name}</span>
-        <span class="preset-brief">${preset.brief}</span>
-      </span>
-      <span class="preset-swatches">${swatches}</span>
-    `;
-    btn.addEventListener('click', () => { state.preset = key; render(); });
-    refs.presetButtons.appendChild(btn);
-  }
-}
-
-function buildPatternButtons() {
-  refs.patternButtons.innerHTML = '';
-  for (const [key, pat] of Object.entries(PATTERNS)) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pattern-btn secondary-button';
-    btn.dataset.key = key;
-    btn.innerHTML = `<span class="pattern-name">${pat.name}</span><span class="pattern-brief">${pat.brief}</span>`;
-    btn.addEventListener('click', () => { state.pattern = key; render(); });
-    refs.patternButtons.appendChild(btn);
-  }
-}
-
 function buildAiPresetButtons() {
   refs.aiPresetButtons.innerHTML = '';
   for (const [key, preset] of Object.entries(PRESETS)) {
@@ -235,7 +178,12 @@ function buildAiPresetButtons() {
     btn.className = 'ai-preset-btn secondary-button';
     btn.dataset.key = key;
     btn.textContent = `${preset.emoji} ${preset.name}`;
-    btn.addEventListener('click', () => { state.aiPreset = key; renderAi(); });
+    btn.addEventListener('click', () => {
+      state.aiPreset = key;
+      state.preset   = key;   // keep canvas preset in sync
+      render();
+      renderAi();
+    });
     refs.aiPresetButtons.appendChild(btn);
   }
 }
@@ -261,19 +209,10 @@ function wireEvents() {
   refs.photoInput.addEventListener('change', e => handlePhotoFile(e.target.files?.[0]));
   refs.photoInput2.addEventListener('change', e => handlePhotoFile(e.target.files?.[0]));
 
-  refs.drawToggleBtn.addEventListener('click', toggleDrawMode);
-  refs.editToggleBtn.addEventListener('click', toggleEditMode);
-  refs.reDetectBtn.addEventListener('click', autoDetectRoofline);
-  refs.nightModeCheck.addEventListener('change', () => {
-    state.nightMode = refs.nightModeCheck.checked;
-    if (state.nightMode && !state.stars) generateStars();
-    render();
-  });
   refs.undoBtn.addEventListener('click', undo);
   refs.clearBtn.addEventListener('click', clearAll);
   refs.viewToggleBtn.addEventListener('click', () => {
     state.showLights = !state.showLights;
-    if (!state.showLights && state.isDrawMode) { state.isDrawMode = false; }
     render();
   });
   refs.downloadBtn.addEventListener('click', downloadMockup);
@@ -282,34 +221,19 @@ function wireEvents() {
     refs.canvasArea.classList.remove('hidden');
   });
 
-  // Canvas drawing events
+  // Canvas drawing — pointer events for unified mouse + touch
   const c = refs.canvas;
-  c.addEventListener('mousedown',  onCanvasMouseDown);
-  c.addEventListener('mouseup',    onCanvasMouseUp);
-  c.addEventListener('click',      onCanvasClick);
-  c.addEventListener('dblclick',   onCanvasDoubleClick);
-  c.addEventListener('mousemove',  onCanvasMouseMove);
-  c.addEventListener('mouseleave', onCanvasMouseLeave);
-  c.addEventListener('contextmenu', onCanvasContextMenu);
-
-  // Touch support for tablets / phones
-  c.addEventListener('touchstart', onTouchStart, { passive: false });
-  c.addEventListener('touchmove',  onTouchMove,  { passive: false });
-  c.addEventListener('touchend',   onTouchEnd,   { passive: false });
+  c.addEventListener('pointerdown',  onPointerDown);
+  c.addEventListener('pointermove',  onPointerMove, { passive: false });
+  c.addEventListener('pointerup',    onPointerUp);
+  c.addEventListener('pointercancel', () => { state.drawDrag = null; renderCanvas(); });
+  c.addEventListener('mouseleave', () => {
+    state.mouseX = null;
+    state.mouseY = null;
+    if (!state.showLights) renderCanvas();
+  });
 
   // AI panel
-  refs.guidePhotoInput.addEventListener('change', e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      state.guidePhotoDataUrl = reader.result;
-      state.guidePhotoName = file.name;
-      refs.guidePhotoName.textContent = file.name;
-      renderAi();
-    };
-    reader.readAsDataURL(file);
-  });
   refs.generateButton.addEventListener('click', generateAiMockup);
   refs.copyPromptButton.addEventListener('click', copyAiPrompt);
   refs.compareRange.addEventListener('input', e => {
@@ -319,8 +243,6 @@ function wireEvents() {
 
   // Keyboard
   document.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && state.isDrawMode) finishSegment();
-    if (e.key === 'Escape' && state.isDrawMode) { state.current = []; renderCanvas(); }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
   });
 }
@@ -335,7 +257,7 @@ async function handlePhotoFile(file) {
   reader.onload = () => {
     state.photoDataUrl = reader.result;
     state.segments = [];
-    state.current = [];
+    state.drawDrag = null;
     state.generatedImageDataUrl = '';
 
     refs.housePhoto.src = reader.result;
@@ -352,7 +274,6 @@ async function handlePhotoFile(file) {
       setTimeout(() => {
         resizeCanvas();
         render();
-        autoDetectRoofline(); // auto-detect immediately after photo loads
       }, 30);
     };
   };
@@ -374,7 +295,10 @@ function resizeCanvas() {
     const sy = h / state.canvasH;
     for (const seg of state.segments)
       for (const pt of seg) { pt.x *= sx; pt.y *= sy; }
-    for (const pt of state.current) { pt.x *= sx; pt.y *= sy; }
+    if (state.drawDrag?.type === 'new') {
+      state.drawDrag.x0 *= sx;
+      state.drawDrag.y0 *= sy;
+    }
   }
 
   state.canvasW = w;
@@ -385,158 +309,84 @@ function resizeCanvas() {
 }
 
 // ============================================================
-// CANVAS EVENTS
+// POINTER EVENTS — unified mouse + touch drawing
 // ============================================================
-
-let _lastClickTime = 0;
-
-function onCanvasMouseDown(e) {
-  if (state.editMode) onEditMouseDown(e);
-}
-
-function onCanvasMouseUp(e) {
-  if (state.editMode) onEditMouseUp(e);
-}
-
-function onCanvasContextMenu(e) {
-  e.preventDefault();
-  if (state.isDrawMode) { finishSegment(); render(); }
-  else if (state.editMode) onEditRightClick(e);
-}
-
-function onCanvasClick(e) {
-  if (!state.isDrawMode) return;
-  const now = Date.now();
-  if (now - _lastClickTime < 380) return;
-  _lastClickTime = now;
-  state.current.push(getCanvasPos(e));
-  renderCanvas();
-}
-
-function onCanvasDoubleClick(e) {
-  if (!state.isDrawMode) return;
-  if (state.current.length > 0) state.current.pop();
-  finishSegment();
-}
-
-function onCanvasMouseMove(e) {
-  const pos = getCanvasPos(e);
-  state.mouseX = pos.x;
-  state.mouseY = pos.y;
-  if (state.editMode) { onEditMouseMove(e); return; }
-  if (state.isDrawMode) renderCanvas();
-}
-
-function onCanvasMouseLeave() {
-  state.mouseX = null;
-  state.mouseY = null;
-  if (state.editMode) { state.hoverTarget = null; state.dragTarget = null; renderCanvas(); return; }
-  if (state.isDrawMode) renderCanvas();
-}
-
-let _lastTouchTime = 0;
-let _lastTouchPos  = null;
-
-function onTouchStart(e) {
-  if (!state.isDrawMode) return;
-  e.preventDefault();
-  const t = e.touches[0];
-  const pos = getCanvasPosFromXY(t.clientX, t.clientY);
-  const now = Date.now();
-
-  if (_lastTouchPos &&
-      Math.hypot(pos.x - _lastTouchPos.x, pos.y - _lastTouchPos.y) < 40 &&
-      now - _lastTouchTime < 450) {
-    // Double-tap: finish segment
-    if (state.current.length > 0) state.current.pop();
-    finishSegment();
-    _lastTouchPos = null;
-    return;
-  }
-
-  _lastTouchTime = now;
-  _lastTouchPos  = pos;
-  state.current.push(pos);
-  renderCanvas();
-}
-
-function onTouchMove(e) {
-  e.preventDefault();
-  const t = e.touches[0];
-  const pos = getCanvasPosFromXY(t.clientX, t.clientY);
-  state.mouseX = pos.x;
-  state.mouseY = pos.y;
-  if (state.editMode && state.dragTarget) {
-    const { segIdx, ptIdx } = state.dragTarget;
-    state.segments[segIdx][ptIdx] = pos;
-    renderCanvas();
-    updateStats();
-    return;
-  }
-  if (state.isDrawMode) renderCanvas();
-}
-
-function onTouchEnd(e) {
-  if (state.editMode) { state.dragTarget = null; return; }
-}
 
 function getCanvasPos(e) {
   const r = refs.canvas.getBoundingClientRect();
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
-function getCanvasPosFromXY(cx, cy) {
-  const r = refs.canvas.getBoundingClientRect();
-  return { x: cx - r.left, y: cy - r.top };
+function onPointerDown(e) {
+  const pos = getCanvasPos(e);
+
+  // Check if near an endpoint (within 18px) → drag it
+  for (let si = 0; si < state.segments.length; si++) {
+    for (let pi = 0; pi < state.segments[si].length; pi++) {
+      const pt = state.segments[si][pi];
+      if (Math.hypot(pt.x - pos.x, pt.y - pos.y) <= 18) {
+        state.drawDrag = { type: 'endpoint', segIdx: si, ptIdx: pi };
+        refs.canvas.setPointerCapture(e.pointerId);
+        refs.canvas.style.cursor = 'grabbing';
+        return;
+      }
+    }
+  }
+
+  // Start drawing a new 2-point segment
+  state.drawDrag = { type: 'new', x0: pos.x, y0: pos.y };
+  refs.canvas.setPointerCapture(e.pointerId);
+}
+
+function onPointerMove(e) {
+  if (state.drawDrag) e.preventDefault();
+
+  const pos = getCanvasPos(e);
+  state.mouseX = pos.x;
+  state.mouseY = pos.y;
+
+  if (state.drawDrag?.type === 'endpoint') {
+    const { segIdx, ptIdx } = state.drawDrag;
+    state.segments[segIdx][ptIdx] = { x: pos.x, y: pos.y };
+    renderCanvas();
+    updateStats();
+  } else if (state.drawDrag?.type === 'new') {
+    // Show preview line — always render route lines during drag
+    renderCanvas();
+  }
+}
+
+function onPointerUp(e) {
+  if (!state.drawDrag) return;
+  const pos = getCanvasPos(e);
+
+  if (state.drawDrag.type === 'new') {
+    const dx = pos.x - state.drawDrag.x0;
+    const dy = pos.y - state.drawDrag.y0;
+    if (Math.hypot(dx, dy) > 8) {
+      state.segments.push([
+        { x: state.drawDrag.x0, y: state.drawDrag.y0 },
+        { x: pos.x, y: pos.y }
+      ]);
+      updateStats();
+    }
+  }
+  // endpoint drag: position already updated in pointermove
+
+  state.drawDrag = null;
+  refs.canvas.style.cursor = state.photoDataUrl ? 'crosshair' : 'default';
+  renderCanvas();
 }
 
 // ============================================================
 // DRAWING ACTIONS
 // ============================================================
 
-function toggleDrawMode() {
-  if (state.isDrawMode) {
-    finishSegment();
-    state.isDrawMode = false;
-  } else {
-    if (!state.photoDataUrl) return;
-    state.isDrawMode = true;
-    state.editMode = false;
-    state.showLights = false;
-    state.hoverTarget = null;
-    state.dragTarget = null;
-  }
-  render();
-}
-
-function toggleEditMode() {
-  if (state.editMode) {
-    state.editMode = false;
-    state.hoverTarget = null;
-    state.dragTarget = null;
-  } else {
-    if (!state.photoDataUrl) return;
-    state.editMode = true;
-    state.isDrawMode = false;
-    state.showLights = false;
-    finishSegment();
-  }
-  render();
-}
-
-function finishSegment() {
-  if (state.current.length >= 2) {
-    state.segments.push([...state.current]);
-  }
-  state.current = [];
-}
-
 function undo() {
-  if (state.current.length > 0) {
-    state.current.pop();
+  if (state.drawDrag?.type === 'new') {
+    state.drawDrag = null;
   } else if (state.segments.length > 0) {
-    state.current = state.segments.pop();
-    state.current.pop();
+    state.segments.pop();
   }
   renderCanvas();
   updateStats();
@@ -544,7 +394,7 @@ function undo() {
 
 function clearAll() {
   state.segments = [];
-  state.current  = [];
+  state.drawDrag  = null;
   renderCanvas();
   updateStats();
 }
@@ -554,84 +404,43 @@ function clearAll() {
 // ============================================================
 
 function render() {
-  const inDraw = state.isDrawMode;
-  const inEdit = state.editMode;
-  const inAnyEdit = inDraw || inEdit;
-
-  // Detecting overlay
-  refs.detectingOverlay.classList.toggle('hidden', !state.detectingRoofline);
-
-  // Floating toolbar visibility
-  refs.canvasFloatBar.classList.toggle('hidden', !state.photoDataUrl || state.detectingRoofline);
-
-  // Float bar button states
-  refs.drawToggleBtn.classList.toggle('is-active', inDraw);
-  refs.editToggleBtn.classList.toggle('is-active', inEdit);
+  // Floating toolbar
+  refs.canvasFloatBar.classList.toggle('hidden', !state.photoDataUrl);
 
   // Canvas cursor
-  if (!inDraw && !inEdit) refs.canvas.style.cursor = 'default';
-  else if (inDraw) refs.canvas.style.cursor = 'crosshair';
-  // edit mode cursor managed dynamically in onEditMouseMove
+  refs.canvas.style.cursor = state.photoDataUrl ? 'crosshair' : 'default';
 
-  // Toolbar
-  refs.modeIndicator.textContent = inDraw ? 'Drawing' : inEdit ? 'Editing' : (state.showLights ? 'Lights Preview' : 'Roofline');
-  refs.modeIndicator.className = 'mode-badge ' + (inDraw ? 'mode-draw' : inEdit ? 'mode-edit' : 'mode-preview');
+  // Toolbar mode badge
+  const dragging = Boolean(state.drawDrag);
+  refs.modeIndicator.textContent = dragging ? 'Drawing'
+    : (state.showLights ? 'Lights Preview' : 'Roofline');
+  refs.modeIndicator.className = 'mode-badge ' + (dragging ? 'mode-draw' : 'mode-preview');
+
   refs.viewToggleBtn.textContent = state.showLights ? '📐 Roofline' : '💡 Preview Lights';
-  refs.viewToggleBtn.classList.toggle('hidden', inAnyEdit);
-
-  // Night mode toggle — only relevant in lights preview
-  refs.nightToggleLabel.classList.toggle('hidden', inAnyEdit || !state.showLights);
 
   // Preset badge in toolbar
   const p = PRESETS[state.preset];
-  refs.previewPreset.textContent = state.showLights && !inAnyEdit ? `${p.emoji} ${p.name}` : '';
-
-  // Canvas tip
-  refs.canvasTip.classList.toggle('hidden', !inDraw);
+  refs.previewPreset.textContent = state.showLights ? `${p.emoji} ${p.name}` : '';
 
   // Night mode on photo
-  const showNight = state.nightMode && state.showLights && !inAnyEdit;
-  refs.housePhoto.classList.toggle('night-mode', showNight);
+  refs.housePhoto.classList.toggle('night-mode', state.nightMode && state.showLights);
 
-  // Preset buttons
-  for (const btn of refs.presetButtons.querySelectorAll('.preset-btn'))
-    btn.classList.toggle('is-active', btn.dataset.key === state.preset);
+  // AI preset buttons
+  for (const btn of refs.aiPresetButtons.querySelectorAll('.ai-preset-btn'))
+    btn.classList.toggle('is-active', btn.dataset.key === state.aiPreset);
 
-  // Pattern buttons
-  for (const btn of refs.patternButtons.querySelectorAll('.pattern-btn'))
-    btn.classList.toggle('is-active', btn.dataset.key === state.pattern);
-
-  // Draw hint in sidebar
-  if (!state.photoDataUrl) {
-    refs.drawHint.textContent = 'Upload a photo — roofline detects automatically.';
-  } else if (state.detectingRoofline) {
-    refs.drawHint.textContent = 'Detecting roofline with AI…';
-  } else if (inDraw) {
-    refs.drawHint.textContent = 'Click on the canvas to add points · Double-click to finish';
-  } else if (inEdit) {
-    refs.drawHint.textContent = 'Drag points · Click line to insert · Right-click to delete';
-  } else if (state.segments.length > 0) {
-    updateStats();
-    return;
-  } else {
-    refs.drawHint.textContent = 'Use "Re-detect" or "Draw" from the canvas toolbar.';
-  }
-
+  updateStats();
   renderCanvas();
 }
 
 function updateStats() {
   if (state.segments.length === 0) {
     refs.bulbCount.textContent = 'Draw the roofline to see bulb count.';
-    refs.drawHint.textContent = state.photoDataUrl
-      ? 'Use "Re-detect" or "Draw" from the canvas toolbar.'
-      : 'Upload a photo to start drawing.';
     return;
   }
   const total = countBulbs();
   const segs  = state.segments.length;
   refs.bulbCount.textContent = `${segs} segment${segs !== 1 ? 's' : ''} · ~${total} bulbs at current spacing`;
-  refs.drawHint.textContent  = `${segs} segment${segs !== 1 ? 's' : ''} drawn · ~${total} bulbs`;
 }
 
 function countBulbs() {
@@ -654,167 +463,58 @@ function renderCanvas() {
   const ctx = refs.canvas.getContext('2d');
   ctx.clearRect(0, 0, refs.canvas.width, refs.canvas.height);
 
-  if (state.isDrawMode || state.editMode || !state.showLights) {
+  if (!state.showLights || state.drawDrag) {
     renderRouteLines(ctx);
-    // Show magnifier loupe when dragging a point in edit mode
-    if (state.editMode && state.dragTarget && state.mouseX !== null) {
-      drawLoupe(ctx, state.mouseX, state.mouseY);
-    }
   } else {
     if (state.nightMode) drawStars(ctx);
     renderLights(ctx);
   }
 }
 
-function drawLoupe(ctx, cx, cy) {
-  const RADIUS = 72;
-  const ZOOM   = 3.5;
-  const img    = refs.housePhoto;
-  const bounds = getImageBoundsInCanvas(img.naturalWidth, img.naturalHeight);
-  if (!bounds) return;
-
-  // Position loupe above the cursor so it doesn't obscure the work area
-  const lx = cx;
-  const ly = cy - RADIUS - 28;
-
-  ctx.save();
-
-  // Clip to circle
-  ctx.beginPath();
-  ctx.arc(lx, ly, RADIUS, 0, Math.PI * 2);
-  ctx.clip();
-
-  // Draw zoomed slice of the house photo
-  const srcW = (RADIUS * 2) / ZOOM;
-  const srcH = (RADIUS * 2) / ZOOM;
-  const imgX = (cx - bounds.x) / bounds.w * img.naturalWidth;
-  const imgY = (cy - bounds.y) / bounds.h * img.naturalHeight;
-  const scaleX = img.naturalWidth  / bounds.w;
-  const scaleY = img.naturalHeight / bounds.h;
-  ctx.drawImage(
-    img,
-    imgX - srcW * scaleX / 2, imgY - srcH * scaleY / 2,
-    srcW * scaleX, srcH * scaleY,
-    lx - RADIUS, ly - RADIUS, RADIUS * 2, RADIUS * 2
-  );
-
-  // Draw the canvas route lines zoomed inside the loupe
-  ctx.translate(lx - cx * ZOOM, ly - cy * ZOOM);
-  ctx.scale(ZOOM, ZOOM);
-  renderRouteLines(ctx);
-  ctx.restore();
-
-  // Loupe border
-  ctx.beginPath();
-  ctx.arc(lx, ly, RADIUS, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth   = 2;
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
-  ctx.shadowBlur  = 8;
-  ctx.stroke();
-  ctx.shadowBlur  = 0;
-
-  // Crosshair at center of loupe
-  ctx.strokeStyle = 'rgba(255, 60, 60, 0.9)';
-  ctx.lineWidth   = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(lx - 10, ly); ctx.lineTo(lx + 10, ly);
-  ctx.moveTo(lx, ly - 10); ctx.lineTo(lx, ly + 10);
-  ctx.stroke();
-
-  // Connector line from loupe to cursor
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth   = 1;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(lx, ly + RADIUS);
-  ctx.lineTo(cx, cy);
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
 function renderRouteLines(ctx) {
   ctx.lineCap  = 'round';
   ctx.lineJoin = 'round';
 
-  const allSegs = [
-    ...state.segments,
-    ...(state.current.length > 0 ? [state.current] : []),
-  ];
-
-  for (const seg of allSegs) {
+  // Draw completed segments
+  for (const seg of state.segments) {
     if (seg.length < 2) continue;
-    ctx.strokeStyle = 'rgba(255, 55, 55, 0.92)';
-    ctx.lineWidth = 2.5;
-    ctx.shadowColor = 'rgba(255, 80, 80, 0.6)';
-    ctx.shadowBlur  = 6;
+    ctx.strokeStyle = 'rgba(255,30,30,0.95)';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = 'rgba(255,80,80,0.5)';
+    ctx.shadowBlur  = 5;
     ctx.beginPath();
     ctx.moveTo(seg[0].x, seg[0].y);
-    for (let i = 1; i < seg.length; i++) ctx.lineTo(seg[i].x, seg[i].y);
+    ctx.lineTo(seg[1].x, seg[1].y);
     ctx.stroke();
     ctx.shadowBlur = 0;
-  }
 
-  // Anchor dots
-  for (const seg of allSegs) {
+    // Endpoints: filled white circle with red border
     for (const pt of seg) {
-      ctx.fillStyle   = '#ff4444';
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth   = 1.5;
-      ctx.shadowBlur  = 0;
+      ctx.fillStyle   = '#ffffff';
+      ctx.strokeStyle = 'rgba(255,30,30,0.95)';
+      ctx.lineWidth   = 2;
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+      ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
   }
 
-  // Edit mode hover highlights
-  if (state.editMode && state.hoverTarget) {
-    const ht = state.hoverTarget;
-    if (ht.type === 'point') {
-      const pt = state.segments[ht.segIdx]?.[ht.ptIdx];
-      if (pt) {
-        ctx.fillStyle   = '#ffffff';
-        ctx.strokeStyle = '#ff4444';
-        ctx.lineWidth   = 2.5;
-        ctx.shadowColor = '#ff4444';
-        ctx.shadowBlur  = 8;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
-    } else if (ht.type === 'segment' && ht.insertPt) {
-      ctx.fillStyle   = 'rgba(255, 190, 50, 0.95)';
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth   = 1.5;
-      ctx.shadowBlur  = 0;
-      ctx.beginPath();
-      ctx.arc(ht.insertPt.x, ht.insertPt.y, 5.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
-
-  // Ghost preview line to cursor
-  if (state.isDrawMode && state.current.length > 0 && state.mouseX !== null) {
-    const last = state.current[state.current.length - 1];
-    ctx.strokeStyle = 'rgba(255, 100, 100, 0.45)';
+  // Preview line while drawing a new segment
+  if (state.drawDrag?.type === 'new' && state.mouseX !== null) {
+    ctx.strokeStyle = 'rgba(255,30,30,0.6)';
     ctx.lineWidth   = 2;
     ctx.setLineDash([8, 6]);
     ctx.beginPath();
-    ctx.moveTo(last.x, last.y);
+    ctx.moveTo(state.drawDrag.x0, state.drawDrag.y0);
     ctx.lineTo(state.mouseX, state.mouseY);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Preview cursor dot
-    ctx.fillStyle  = 'rgba(255, 100, 100, 0.7)';
-    ctx.shadowBlur = 0;
+    // Start dot
+    ctx.fillStyle = 'rgba(255,30,30,0.8)';
     ctx.beginPath();
-    ctx.arc(state.mouseX, state.mouseY, 5, 0, Math.PI * 2);
+    ctx.arc(state.drawDrag.x0, state.drawDrag.y0, 5, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -906,7 +606,6 @@ function downloadMockup() {
   const iw  = img.naturalWidth;
   const ih  = img.naturalHeight;
 
-  // How the image is laid out within the canvas (object-fit: contain)
   const bounds = getImageBoundsInCanvas(iw, ih);
   if (!bounds) return;
 
@@ -1003,14 +702,16 @@ function hexRgba(hex, alpha) {
 }
 
 // ============================================================
-// AI GENERATION (legacy / optional)
+// AI GENERATION
 // ============================================================
 
 function buildAiPrompt() {
   const preset  = PRESETS[state.aiPreset];
   const quality = AI_QUALITY[state.aiQuality];
 
-  const guideIntro = state.guidePhotoDataUrl
+  const hasGuide = state.segments.length > 0;
+
+  const guideIntro = hasGuide
     ? [
         'You are given TWO images of the same house:',
         '  • Image 1 — the clean daytime house photo. This is your base.',
@@ -1039,7 +740,7 @@ function buildAiPrompt() {
     '1. Place lights ONLY on the fascia board edges shown in the red guide (or along all visible eave/fascia lines if no guide). Follow every angle — horizontal eaves AND sloped gable edges.',
     '2. Show individual distinct puck light points on the fascia — NOT a continuous glowing strip.',
     '3. Each puck must produce a visible downward glow washing the wall below with the light color.',
-    '4. Convert the sky to a deep dark blue-black night sky with realistic stars. Keep it beautiful.',
+    '4. Convert the sky to a deep blue-black night sky with a stunning Milky Way effect — hundreds of visible stars of varying brightness, with a subtle blue-violet gradient near the horizon fading to near-black overhead. The stars should be numerous and beautiful, like a clear rural night far from city lights.',
     '5. Keep the house architecture 100% identical — same windows, doors, stone, landscaping, everything.',
     '6. Remove all red markup lines from the final image.',
     '7. The lawn and landscaping should look naturally lit by the colored light spilling downward.',
@@ -1061,8 +762,41 @@ function renderAi() {
   renderCompare();
 }
 
+// ============================================================
+// CAPTURE GUIDE PHOTO — render canvas lines onto image
+// ============================================================
+
+function captureGuidePhoto() {
+  const img = refs.housePhoto;
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const oc = document.createElement('canvas');
+  oc.width = w; oc.height = h;
+  const ctx = oc.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+
+  const bounds = getImageBoundsInCanvas(w, h);
+  if (!bounds) return null;
+  const sx = w / bounds.w, sy = h / bounds.h;
+
+  ctx.strokeStyle = 'rgba(255, 30, 30, 0.95)';
+  ctx.lineWidth = Math.max(4, w / 200);
+  ctx.lineCap = 'round';
+  for (const seg of state.segments) {
+    if (seg.length < 2) continue;
+    ctx.beginPath();
+    const p0 = seg[0];
+    ctx.moveTo((p0.x - bounds.x) * sx, (p0.y - bounds.y) * sy);
+    for (let i = 1; i < seg.length; i++) {
+      const p = seg[i];
+      ctx.lineTo((p.x - bounds.x) * sx, (p.y - bounds.y) * sy);
+    }
+    ctx.stroke();
+  }
+  return oc.toDataURL('image/jpeg', 0.92);
+}
+
 async function generateAiMockup() {
-  if (!state.photoDataUrl && !state.guidePhotoDataUrl) {
+  if (!state.photoDataUrl) {
     alert('Upload the house photo first.');
     return;
   }
@@ -1070,13 +804,15 @@ async function generateAiMockup() {
   refs.generateButton.textContent = 'Generating…';
 
   try {
+    const guidePhotoDataUrl = state.segments.length > 0 ? captureGuidePhoto() : null;
+
     const res = await fetch('/api/mockup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: buildAiPrompt(),
         cleanPhotoDataUrl: state.photoDataUrl,
-        guidePhotoDataUrl: state.guidePhotoDataUrl,
+        guidePhotoDataUrl: guidePhotoDataUrl,
         preset: state.aiPreset,
         qualityMode: state.aiQuality,
       }),
@@ -1093,14 +829,14 @@ async function generateAiMockup() {
     alert(`Generation failed: ${err.message}`);
   } finally {
     refs.generateButton.disabled = false;
-    refs.generateButton.textContent = 'Generate AI Mockup';
+    refs.generateButton.textContent = '✨ Generate AI Mockup';
     renderAi();
   }
 }
 
 async function copyAiPrompt() {
   try {
-    await navigator.clipboard.writeText(refs.promptOutput.value);
+    await navigator.clipboard.writeText(buildAiPrompt());
   } catch { /* ignore */ }
 }
 
@@ -1113,231 +849,6 @@ function renderCompare() {
   const hasGen = Boolean(state.generatedImageDataUrl);
   refs.previewViewport.classList.toggle('has-original', Boolean(state.photoDataUrl));
   refs.previewViewport.classList.toggle('has-generated', hasGen);
-}
-
-// ============================================================
-// EDGE SNAPPING — snap GPT coords to actual image edges
-// ============================================================
-
-function snapToEdges(segments, bounds) {
-  const img = refs.housePhoto;
-  const iw  = img.naturalWidth;
-  const ih  = img.naturalHeight;
-  if (!iw || !ih) return segments;
-
-  // Downscale for speed
-  const SCALE = Math.min(1, 600 / Math.max(iw, ih));
-  const sw = Math.round(iw * SCALE);
-  const sh = Math.round(ih * SCALE);
-  const oc  = document.createElement('canvas');
-  oc.width  = sw;
-  oc.height = sh;
-  const ctx = oc.getContext('2d');
-  ctx.drawImage(img, 0, 0, sw, sh);
-  const px = ctx.getImageData(0, 0, sw, sh).data;
-
-  const gray = (x, y) => {
-    x = Math.max(0, Math.min(sw - 1, Math.round(x)));
-    y = Math.max(0, Math.min(sh - 1, Math.round(y)));
-    const i = (y * sw + x) * 4;
-    return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-  };
-
-  // Horizontal edge strength — strong means a roof eave/fascia line
-  const hEdge = (x, y) => {
-    let s = 0;
-    for (let dx = -6; dx <= 6; dx++) {
-      s += Math.abs(gray(x + dx, y + 1) - gray(x + dx, y - 1));
-    }
-    return s;
-  };
-
-  // Canvas → scaled-image transforms
-  const sxC = sw / bounds.w;
-  const syC = sh / bounds.h;
-
-  // Eave lines are always in the upper portion of the house photo.
-  // Clamp search to y = 12%…62% of image height.
-  // This prevents snapping to ground, cars, driveways, etc.
-  const Y_MIN_FRAC = 0.12;
-  const Y_MAX_FRAC = 0.62;
-  const yMin = Math.round(sh * Y_MIN_FRAC);
-  const yMax = Math.round(sh * Y_MAX_FRAC);
-
-  const X_STRIP = Math.max(4, Math.round(sw * 0.05)); // ±5% width strip
-  const STEP    = 1;
-
-  return segments.map(seg => seg.map(pt => {
-    const imgX = (pt.x - bounds.x) * sxC;
-
-    const x0 = Math.max(1, Math.round(imgX) - X_STRIP);
-    const x1 = Math.min(sw - 2, Math.round(imgX) + X_STRIP);
-
-    // Find the row with the strongest horizontal edge in the eave zone
-    let bestScore = -1, bestY = Math.round(sh * 0.35); // fallback: mid eave zone
-    for (let y = yMin; y <= yMax; y += STEP) {
-      let s = 0;
-      for (let x = x0; x <= x1; x += 2) s += hEdge(x, y);
-      if (s > bestScore) { bestScore = s; bestY = y; }
-    }
-
-    return {
-      x: pt.x,
-      y: bestY / syC + bounds.y,
-    };
-  }));
-}
-
-// ============================================================
-// AUTO-DETECT ROOFLINE
-// ============================================================
-
-async function autoDetectRoofline() {
-  if (!state.photoDataUrl || state.detectingRoofline) return;
-  state.detectingRoofline = true;
-  state.isDrawMode = false;
-  state.editMode = false;
-  render();
-
-  try {
-    const res = await fetch('/api/detect-roofline', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photoDataUrl: state.photoDataUrl }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Detection failed');
-
-    const bounds = getImageBoundsInCanvas(refs.housePhoto.naturalWidth, refs.housePhoto.naturalHeight);
-    if (!bounds) throw new Error('Canvas not ready');
-
-    // Map fractional coords to canvas coords
-    const rough = data.segments
-      .filter(seg => Array.isArray(seg) && seg.length >= 2)
-      .map(seg => seg.map(pt => ({
-        x: bounds.x + pt.x * bounds.w,
-        y: bounds.y + pt.y * bounds.h,
-      })));
-
-    // Snap each point to the nearest strong horizontal edge in the actual image
-    state.segments = snapToEdges(rough, bounds);
-    state.current  = [];
-    state.isDrawMode = false;
-    state.editMode   = true;
-    state.showLights = false;
-    state.hoverTarget = null;
-    state.dragTarget  = null;
-
-    updateStats();
-    render();
-  } catch (err) {
-    alert(`Roofline detection failed: ${err.message}\n\nMake sure OPENAI_API_KEY is set on the server.`);
-  } finally {
-    state.detectingRoofline = false;
-    render();
-  }
-}
-
-// ============================================================
-// EDIT MODE HANDLERS
-// ============================================================
-
-function findNearestPoint(x, y, threshold = 14) {
-  let best = null, bestDist = threshold;
-  for (let si = 0; si < state.segments.length; si++) {
-    for (let pi = 0; pi < state.segments[si].length; pi++) {
-      const pt = state.segments[si][pi];
-      const d = Math.hypot(pt.x - x, pt.y - y);
-      if (d < bestDist) { bestDist = d; best = { segIdx: si, ptIdx: pi }; }
-    }
-  }
-  return best;
-}
-
-function findNearestSegment(x, y, threshold = 10) {
-  let best = null, bestDist = threshold;
-  for (let si = 0; si < state.segments.length; si++) {
-    const seg = state.segments[si];
-    for (let pi = 0; pi < seg.length - 1; pi++) {
-      const { dist, t } = pointToSegmentDist(x, y, seg[pi].x, seg[pi].y, seg[pi+1].x, seg[pi+1].y);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = {
-          segIdx: si,
-          insertAfter: pi,
-          insertPt: {
-            x: seg[pi].x + (seg[pi+1].x - seg[pi].x) * t,
-            y: seg[pi].y + (seg[pi+1].y - seg[pi].y) * t,
-          }
-        };
-      }
-    }
-  }
-  return best;
-}
-
-function pointToSegmentDist(px, py, ax, ay, bx, by) {
-  const dx = bx - ax, dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq < 0.001) return { dist: Math.hypot(px - ax, py - ay), t: 0 };
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
-  return { dist: Math.hypot(px - (ax + dx * t), py - (ay + dy * t)), t };
-}
-
-function onEditMouseDown(e) {
-  const pos = getCanvasPos(e);
-  const nearPt = findNearestPoint(pos.x, pos.y);
-  if (nearPt) {
-    state.dragTarget = nearPt;
-    refs.canvas.style.cursor = 'grabbing';
-    return;
-  }
-  const nearSeg = findNearestSegment(pos.x, pos.y);
-  if (nearSeg) {
-    state.segments[nearSeg.segIdx].splice(nearSeg.insertAfter + 1, 0, { ...nearSeg.insertPt });
-    state.dragTarget = { segIdx: nearSeg.segIdx, ptIdx: nearSeg.insertAfter + 1 };
-    state.hoverTarget = null;
-    refs.canvas.style.cursor = 'grabbing';
-    renderCanvas();
-    updateStats();
-  }
-}
-
-function onEditMouseMove(e) {
-  const pos = getCanvasPos(e);
-  state.mouseX = pos.x;
-  state.mouseY = pos.y;
-  if (state.dragTarget) {
-    const { segIdx, ptIdx } = state.dragTarget;
-    if (state.segments[segIdx]) state.segments[segIdx][ptIdx] = { x: pos.x, y: pos.y };
-    renderCanvas();
-    updateStats();
-    return;
-  }
-  const nearPt  = findNearestPoint(pos.x, pos.y, 16);
-  const nearSeg = nearPt ? null : findNearestSegment(pos.x, pos.y, 12);
-  state.hoverTarget = nearPt  ? { type: 'point',   ...nearPt  }
-                    : nearSeg ? { type: 'segment', ...nearSeg }
-                    : null;
-  refs.canvas.style.cursor = nearPt ? 'grab' : nearSeg ? 'cell' : 'default';
-  renderCanvas();
-}
-
-function onEditMouseUp() {
-  state.dragTarget = null;
-  refs.canvas.style.cursor = state.hoverTarget?.type === 'point' ? 'grab' : 'default';
-}
-
-function onEditRightClick(e) {
-  const pos = getCanvasPos(e);
-  const nearPt = findNearestPoint(pos.x, pos.y, 18);
-  if (!nearPt) return;
-  const seg = state.segments[nearPt.segIdx];
-  seg.splice(nearPt.ptIdx, 1);
-  if (seg.length < 2) state.segments.splice(nearPt.segIdx, 1);
-  state.hoverTarget = null;
-  renderCanvas();
-  updateStats();
 }
 
 // ============================================================

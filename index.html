@@ -16,7 +16,7 @@
       <div class="brand">
         <p class="eyebrow">Permabright</p>
         <h1>Mockup Studio</h1>
-        <p class="lede">Upload a photo — roofline detects automatically.</p>
+        <p class="lede">Upload a photo and generate a photorealistic night lighting preview.</p>
       </div>
 
       <!-- Step 1: Photo -->
@@ -32,32 +32,38 @@
         <p id="photoName" class="meta">No photo selected</p>
       </section>
 
-      <!-- Step 2: Roofline status -->
+      <!-- Step 2: Light Preset -->
       <section class="panel">
         <div class="panel-header">
           <span class="step-num">2</span>
-          <h2>Roofline</h2>
+          <h2>Light Preset</h2>
         </div>
-        <p class="meta" id="drawHint">Upload a photo — roofline detects automatically.</p>
+        <div id="aiPresetButtons" class="ai-preset-list"></div>
       </section>
 
-      <!-- Step 3: Preset -->
+      <!-- Step 3: Generate AI Mockup -->
       <section class="panel">
         <div class="panel-header">
           <span class="step-num">3</span>
-          <h2>Light Preset</h2>
+          <h2>Generate AI Mockup</h2>
         </div>
-        <div id="presetButtons" class="preset-list"></div>
+        <p class="meta" style="margin-bottom:10px">Send the photo to OpenAI to generate a photorealistic night preview. Requires the local server.</p>
+        <div id="qualityButtons" class="quality-toggle" style="margin-bottom:10px"></div>
+        <button id="generateButton" type="button">✨ Generate AI Mockup</button>
+        <button id="copyPromptButton" class="secondary-button" type="button" style="margin-top:8px">Copy AI Prompt</button>
       </section>
 
-      <!-- Step 4: Pattern -->
-      <section class="panel">
-        <div class="panel-header">
-          <span class="step-num">4</span>
-          <h2>Spacing Pattern</h2>
+      <!-- Step 4: Roofline Drawing Guide (optional) -->
+      <details class="panel ai-panel">
+        <summary>
+          <span class="ai-summary-label">Roofline Drawing Guide</span>
+          <span class="ai-summary-badge">Optional</span>
+        </summary>
+        <div class="ai-inner">
+          <p class="meta">Tap and drag on the canvas to draw roofline segments. The red lines show the AI exactly where to place the lights.</p>
+          <p class="meta" style="margin-top:4px">Drag an endpoint circle to adjust a segment. Draw as many segments as needed.</p>
         </div>
-        <div id="patternButtons" class="pattern-list"></div>
-      </section>
+      </details>
 
       <!-- Step 5: Save -->
       <section class="panel">
@@ -66,28 +72,8 @@
           <h2>Save Mockup</h2>
         </div>
         <button id="downloadBtn" type="button">⬇ Download Image</button>
-        <p class="meta" id="bulbCount">Draw the roofline to see bulb count.</p>
+        <p class="meta" id="bulbCount" style="margin-top:8px">Draw the roofline to see bulb count.</p>
       </section>
-
-      <!-- AI Generation (optional) -->
-      <details class="panel ai-panel">
-        <summary>
-          <span class="ai-summary-label">AI Image Generation</span>
-          <span class="ai-summary-badge">Optional</span>
-        </summary>
-        <div class="ai-inner">
-          <p class="meta">Send photos to OpenAI to generate a photorealistic night preview. Requires the local server.</p>
-          <label class="file-picker secondary-picker">
-            <input id="guidePhotoInput" type="file" accept="image/*">
-            <span>Upload Red Guide Photo</span>
-          </label>
-          <p id="guidePhotoName" class="meta">No guide photo selected</p>
-          <div id="qualityButtons" class="quality-toggle"></div>
-          <div id="aiPresetButtons" class="ai-preset-list"></div>
-          <button id="generateButton" type="button">Generate AI Mockup</button>
-          <button id="copyPromptButton" class="secondary-button" type="button">Copy AI Prompt</button>
-        </div>
-      </details>
     </aside>
 
     <main class="stage">
@@ -96,7 +82,7 @@
         <div class="empty-inner">
           <div class="upload-icon">🏠</div>
           <h2>Upload a House Photo</h2>
-          <p>The roofline will be detected automatically. Then adjust if needed and pick your lighting preset.</p>
+          <p>Then pick a light preset and generate a stunning AI night preview — or draw the roofline manually for a canvas mockup.</p>
           <label class="file-picker big-picker">
             <input id="photoInput2" type="file" accept="image/*">
             <span>Choose Photo</span>
@@ -106,18 +92,13 @@
 
       <!-- Canvas workspace -->
       <div id="canvasArea" class="canvas-area hidden">
-        <!-- Top toolbar: mode badge + lights toggle + night mode -->
+        <!-- Top toolbar -->
         <div class="canvas-toolbar">
           <div class="toolbar-left">
-            <span id="modeIndicator" class="mode-badge">Preview</span>
+            <span id="modeIndicator" class="mode-badge mode-preview">Preview</span>
           </div>
           <div class="toolbar-right">
             <div id="previewPreset" class="preview-preset-badge"></div>
-            <label class="night-toggle" id="nightToggleLabel" title="Night preview">
-              <input type="checkbox" id="nightModeCheck">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              Night
-            </label>
             <button id="viewToggleBtn" class="small-btn" type="button">💡 Preview Lights</button>
           </div>
         </div>
@@ -127,26 +108,12 @@
           <img id="housePhoto" alt="House photo">
           <canvas id="drawCanvas"></canvas>
 
-          <!-- Detecting overlay -->
-          <div id="detectingOverlay" class="detecting-overlay hidden">
-            <div class="detecting-inner">
-              <div class="detect-spinner"></div>
-              <span>Detecting roofline…</span>
-            </div>
-          </div>
-
-          <!-- Floating toolbar — lives ON the canvas -->
+          <!-- Floating toolbar -->
           <div id="canvasFloatBar" class="canvas-float-bar hidden">
-            <div class="float-group">
-              <button id="editToggleBtn" class="float-btn" type="button" title="Edit points — drag to move, click segment to insert, right-click to delete">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                Edit
-              </button>
-              <button id="drawToggleBtn" class="float-btn" type="button" title="Draw new roofline segment">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
-                Draw
-              </button>
-            </div>
+            <button id="drawRooflineBtn" class="float-btn is-active" type="button" title="Draw roofline segments by tapping and dragging">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
+              Draw Roofline
+            </button>
             <div class="float-divider"></div>
             <div class="float-group">
               <button id="undoBtn" class="float-btn" type="button" title="Undo (Ctrl+Z)">
@@ -158,16 +125,6 @@
                 Clear
               </button>
             </div>
-            <div class="float-divider"></div>
-            <button id="reDetectBtn" class="float-btn float-btn-detect" type="button" title="Re-run auto-detection">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              Re-detect
-            </button>
-          </div>
-
-          <!-- Draw mode tip -->
-          <div id="canvasTip" class="canvas-tip hidden">
-            Click to add points &nbsp;·&nbsp; Double-click to finish &nbsp;·&nbsp; Right-click to cancel
           </div>
         </div>
       </div>
