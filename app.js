@@ -8,56 +8,56 @@ const PRESETS = {
     emoji: '✨',
     brief: 'Warm architectural white',
     colors: ['#ffe8c0'],
-    aiEffect: 'Warm white permanent puck lights with a soft premium architectural glow.',
+    aiEffect: 'Warm white (2700K) individual LED puck lights. Each puck casts a rich warm-white downward glow that washes the stone or brick facade below with soft golden-white light. The wall beneath the roofline glows warmly. The sky is deep blue-black with scattered stars. No decorations.',
   },
   warmWhite: {
     name: 'Warm White',
     emoji: '🕯️',
     brief: 'Classic warm white',
     colors: ['#fff3d4'],
-    aiEffect: 'Clean warm white permanent puck lights with subtle downward wash.',
+    aiEffect: 'Warm white (3000K) individual LED puck lights mounted on the fascia. Each light projects a warm amber-white downward wash onto the home exterior below. The facade is beautifully illuminated by the warm glow. Deep navy night sky with stars. No decorations.',
   },
   coolWhite: {
     name: 'Cool White',
     emoji: '💎',
     brief: 'Bright modern white',
     colors: ['#ddeeff'],
-    aiEffect: 'Bright cool-white permanent puck lights with a crisp modern glow.',
+    aiEffect: 'Crisp cool white (6000K) individual LED puck lights. Each puck emits a bright blue-white downward glow that washes the home facade below with clean modern white light. The stone or brick wall beneath the roofline glows bright white. Dark night sky with stars. No decorations.',
   },
   christmas: {
     name: 'Christmas',
     emoji: '🎄',
     brief: 'Red, green & white',
     colors: ['#ff2020', '#15cc40', '#ffffff'],
-    aiEffect: 'Festive individual red, green, and white puck lights spaced evenly along the marked runs.',
+    aiEffect: 'Alternating individual red, green, and white LED puck lights. Each colored puck washes the facade below it in its color — red sections glow red on the wall, green sections glow green, white sections glow white. The combined effect creates a festive Christmas color wash along the entire roofline. Add a tasteful evergreen wreath with a red bow on the front door. Deep dark night sky with bright stars.',
   },
   fourth: {
     name: '4th of July',
     emoji: '🎆',
     brief: 'Red, white & blue',
     colors: ['#ff1515', '#ffffff', '#1155ff'],
-    aiEffect: 'Individual red, white, and blue puck lights spaced evenly only on the marked runs.',
+    aiEffect: 'Alternating individual red, white, and blue LED puck lights. Red pucks wash the wall below in red, white pucks in white, blue pucks in vivid blue — creating a patriotic color-washed facade. The home exterior glows with bold red, white, and blue sections. Deep dark night sky. Optional: small American flags near the entrance.',
   },
   halloween: {
     name: 'Halloween',
     emoji: '🎃',
     brief: 'Orange & purple',
     colors: ['#ff6600', '#aa00ee'],
-    aiEffect: 'Individual orange and purple puck lights with a dramatic but clean seasonal glow.',
+    aiEffect: 'Alternating individual orange and purple LED puck lights. Orange pucks cast a vivid orange glow washing the wall below, purple pucks cast deep purple — creating a dramatic Halloween color scheme on the facade. The home looks spooky and festive. Dark night sky with stars. Add one or two carved jack-o-lanterns glowing near the front entrance.',
   },
   easter: {
     name: 'Easter',
     emoji: '🐣',
     brief: 'Pastel spring colors',
     colors: ['#ff88cc', '#ffee44', '#cc55ff', '#55ee88'],
-    aiEffect: 'Soft pastel pink, yellow, lavender, and mint green puck lights for a cheerful spring look.',
+    aiEffect: 'Rotating pastel pink, yellow, lavender, and mint green individual LED puck lights. Each colored puck washes the wall below in its soft pastel color — creating a cheerful, spring-celebration look on the facade. Soft glowing pastels across the home exterior. Deep twilight sky. Optional: small spring flower arrangements near the entrance.',
   },
   newYear: {
     name: "New Year's",
     emoji: '🥂',
     brief: 'Gold, white & silver',
     colors: ['#ffd700', '#ffffff', '#c0c0c0'],
-    aiEffect: 'Elegant gold, white, and silver puck lights for a celebration look.',
+    aiEffect: 'Alternating gold, white, and silver individual LED puck lights. Gold pucks cast rich golden downward wash, white pucks bright white, silver pucks a cool silver-white — creating an elegant celebration look. The home glows with luxurious gold and white light. Dark night sky with extra bright stars and a subtle starburst effect.',
   },
 };
 
@@ -1006,38 +1006,45 @@ function hexRgba(hex, alpha) {
 // ============================================================
 
 function buildAiPrompt() {
-  const preset   = PRESETS[state.aiPreset];
-  const quality  = AI_QUALITY[state.aiQuality];
+  const preset  = PRESETS[state.aiPreset];
+  const quality = AI_QUALITY[state.aiQuality];
+
   const guideIntro = state.guidePhotoDataUrl
-    ? ['Two matching images are provided.',
-       '- Image 1 is the clean house photo and is the base image.',
-       '- Image 2 is the same house with the intended install path marked in red.',
-       'Treat the red-marked guide image as authoritative for light placement.'].join('\n')
-    : ['One house photo is provided.',
-       'If the photo includes red roofline markup, use that markup as the authoritative install guide but remove it from the final result.'].join('\n');
+    ? [
+        'You are given TWO images of the same house:',
+        '  • Image 1 — the clean daytime house photo. This is your base.',
+        '  • Image 2 — the same house with the roofline marked in red. The red lines show EXACTLY where the permanent LED lights are installed. Follow them precisely.',
+      ].join('\n')
+    : [
+        'You are given ONE house photo.',
+        'If red markup lines are visible, treat them as the exact install path for the lights and remove them from the final image.',
+      ].join('\n');
 
   return [
-    'Create a polished homeowner-facing mockup for Permabright permanent lighting.',
+    '=== PERMABRIGHT PERMANENT LIGHTING MOCKUP ===',
     '',
     guideIntro,
     '',
-    'Placement rules:',
-    '- Follow only the marked install path.',
-    '- Lights must sit on the lower front-facing fascia or eave line under the roof edge.',
-    '- Never trace the peak lines on top of the roof unless explicitly marked in red.',
-    '- Show individual permanent bulbs or pucks spaced about 8 inches apart.',
-    '- Each bulb should have a subtle downward-facing glow, not a thick glowing rope.',
+    '--- WHAT THIS PRODUCT LOOKS LIKE ---',
+    'Permabright permanent lighting uses individual small LED puck lights (about the size of a quarter) mounted flush on the front face of the fascia board — the trim board directly under the roof edge. The pucks are spaced approximately 6–8 inches apart and follow every roofline angle including up gable peaks and along horizontal eave runs. Each individual puck emits a focused downward-facing glow that washes the stone, brick, or siding wall directly below it with colored light. The effect is: bright individual light points on the fascia + a rich colored wash of light flowing down the exterior wall below. It does NOT look like rope lights, neon strips, or icicle lights — it looks like evenly-spaced bright point lights with strong wall wash.',
     '',
-    'Output requirements:',
-    '- Convert the scene into a realistic dusk/night exterior preview.',
-    '- Keep the home recognizable and preserve the architecture and landscaping.',
-    `- Lighting preset: ${preset.aiEffect}`,
-    `- Quality mode: ${quality.note}`,
-    '- The result should look like a beautiful sales illustration for a homeowner.',
-    '- Do not show any red lines, measurement notes, or markup in the final image.',
-    '- Do not add decorations or unrelated holiday props.',
+    '--- YOUR TASK ---',
+    'Transform the daytime house photo into a photorealistic night scene showing this permanent lighting installed and glowing. The result should look like an actual photo taken at night — not a rendering or illustration.',
     '',
-    'Style target: clean · upscale · realistic · strong curb appeal',
+    '--- LIGHTING SPEC ---',
+    preset.aiEffect,
+    '',
+    '--- RULES ---',
+    '1. Place lights ONLY on the fascia board edges shown in the red guide (or along all visible eave/fascia lines if no guide). Follow every angle — horizontal eaves AND sloped gable edges.',
+    '2. Show individual distinct puck light points on the fascia — NOT a continuous glowing strip.',
+    '3. Each puck must produce a visible downward glow washing the wall below with the light color.',
+    '4. Convert the sky to a deep dark blue-black night sky with realistic stars. Keep it beautiful.',
+    '5. Keep the house architecture 100% identical — same windows, doors, stone, landscaping, everything.',
+    '6. Remove all red markup lines from the final image.',
+    '7. The lawn and landscaping should look naturally lit by the colored light spilling downward.',
+    `8. Quality: ${quality.note}`,
+    '',
+    'Final result should look like a professional night photography shot of a luxury home with Permabright permanent LED lighting — stunning, realistic, sales-ready.',
   ].join('\n');
 }
 
