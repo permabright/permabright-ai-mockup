@@ -1117,8 +1117,8 @@ function snapToEdges(segments, bounds) {
   const ih  = img.naturalHeight;
   if (!iw || !ih) return segments;
 
-  // Render image to offscreen canvas (downscaled for speed)
-  const SCALE = Math.min(1, 800 / Math.max(iw, ih));
+  // Downscale for speed
+  const SCALE = Math.min(1, 600 / Math.max(iw, ih));
   const sw = Math.round(iw * SCALE);
   const sh = Math.round(ih * SCALE);
   const oc  = document.createElement('canvas');
@@ -1135,58 +1135,46 @@ function snapToEdges(segments, bounds) {
     return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
   };
 
-  // Horizontal edge strength at a point (Sobel gy, averaged over a strip width)
+  // Horizontal edge strength — strong means a roof eave/fascia line
   const hEdge = (x, y) => {
-    let sum = 0;
-    for (let dx = -4; dx <= 4; dx++) {
-      sum += Math.abs(gray(x + dx, y + 1) - gray(x + dx, y - 1));
+    let s = 0;
+    for (let dx = -6; dx <= 6; dx++) {
+      s += Math.abs(gray(x + dx, y + 1) - gray(x + dx, y - 1));
     }
-    return sum;
+    return s;
   };
 
-  // Build a column-averaged horizontal-edge profile across the image.
-  // For each row y (skipping top 15% sky), compute mean edge strength.
-  const skyMinY = Math.round(sh * 0.12);
-  const maxY    = Math.round(sh * 0.88);
-  const rowScore = new Float32Array(sh);
-  for (let y = skyMinY; y < maxY; y++) {
-    let s = 0;
-    const step = Math.max(1, Math.round(sw / 40));
-    for (let x = step; x < sw - step; x += step) s += hEdge(x, y);
-    rowScore[y] = s;
-  }
-
-  // Canvas → scaled-image coordinate transforms
-  const sxC = sw / bounds.w; // canvas px → scaled img px
+  // Canvas → scaled-image transforms
+  const sxC = sw / bounds.w;
   const syC = sh / bounds.h;
 
-  // For each GPT point: scan a ±X-strip of columns around its x,
-  // find the row with the strongest horizontal edge in the valid range,
-  // biased toward rows near the GPT-supplied y (prefer GPT hint when edge is strong).
-  const X_STRIP = Math.round(sw * 0.04); // ±4% of width
-  const STEP    = 2;
+  // Eave lines are always in the upper portion of the house photo.
+  // Clamp search to y = 12%…62% of image height.
+  // This prevents snapping to ground, cars, driveways, etc.
+  const Y_MIN_FRAC = 0.12;
+  const Y_MAX_FRAC = 0.62;
+  const yMin = Math.round(sh * Y_MIN_FRAC);
+  const yMax = Math.round(sh * Y_MAX_FRAC);
+
+  const X_STRIP = Math.max(4, Math.round(sw * 0.05)); // ±5% width strip
+  const STEP    = 1;
 
   return segments.map(seg => seg.map(pt => {
     const imgX = (pt.x - bounds.x) * sxC;
-    const imgY = (pt.y - bounds.y) * syC;
 
-    // Gather edge scores in the strip around imgX
     const x0 = Math.max(1, Math.round(imgX) - X_STRIP);
     const x1 = Math.min(sw - 2, Math.round(imgX) + X_STRIP);
 
-    // Score each row in the valid band
-    let bestScore = -1, bestY = imgY;
-    for (let y = skyMinY; y < maxY; y += STEP) {
+    // Find the row with the strongest horizontal edge in the eave zone
+    let bestScore = -1, bestY = Math.round(sh * 0.35); // fallback: mid eave zone
+    for (let y = yMin; y <= yMax; y += STEP) {
       let s = 0;
-      for (let x = x0; x <= x1; x += STEP) s += hEdge(x, y);
-      // Apply a mild distance penalty to bias toward the GPT hint
-      const dist = Math.abs(y - imgY) / sh;
-      const penalized = s * (1 - 0.3 * dist);
-      if (penalized > bestScore) { bestScore = penalized; bestY = y; }
+      for (let x = x0; x <= x1; x += 2) s += hEdge(x, y);
+      if (s > bestScore) { bestScore = s; bestY = y; }
     }
 
     return {
-      x: pt.x, // keep original x from GPT
+      x: pt.x,
       y: bestY / syC + bounds.y,
     };
   }));
