@@ -655,10 +655,81 @@ function renderCanvas() {
 
   if (state.isDrawMode || state.editMode || !state.showLights) {
     renderRouteLines(ctx);
+    // Show magnifier loupe when dragging a point in edit mode
+    if (state.editMode && state.dragTarget && state.mouseX !== null) {
+      drawLoupe(ctx, state.mouseX, state.mouseY);
+    }
   } else {
     if (state.nightMode) drawStars(ctx);
     renderLights(ctx);
   }
+}
+
+function drawLoupe(ctx, cx, cy) {
+  const RADIUS = 72;
+  const ZOOM   = 3.5;
+  const img    = refs.housePhoto;
+  const bounds = getImageBoundsInCanvas(img.naturalWidth, img.naturalHeight);
+  if (!bounds) return;
+
+  // Position loupe above the cursor so it doesn't obscure the work area
+  const lx = cx;
+  const ly = cy - RADIUS - 28;
+
+  ctx.save();
+
+  // Clip to circle
+  ctx.beginPath();
+  ctx.arc(lx, ly, RADIUS, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Draw zoomed slice of the house photo
+  const srcW = (RADIUS * 2) / ZOOM;
+  const srcH = (RADIUS * 2) / ZOOM;
+  const imgX = (cx - bounds.x) / bounds.w * img.naturalWidth;
+  const imgY = (cy - bounds.y) / bounds.h * img.naturalHeight;
+  const scaleX = img.naturalWidth  / bounds.w;
+  const scaleY = img.naturalHeight / bounds.h;
+  ctx.drawImage(
+    img,
+    imgX - srcW * scaleX / 2, imgY - srcH * scaleY / 2,
+    srcW * scaleX, srcH * scaleY,
+    lx - RADIUS, ly - RADIUS, RADIUS * 2, RADIUS * 2
+  );
+
+  // Draw the canvas route lines zoomed inside the loupe
+  ctx.translate(lx - cx * ZOOM, ly - cy * ZOOM);
+  ctx.scale(ZOOM, ZOOM);
+  renderRouteLines(ctx);
+  ctx.restore();
+
+  // Loupe border
+  ctx.beginPath();
+  ctx.arc(lx, ly, RADIUS, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth   = 2;
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur  = 8;
+  ctx.stroke();
+  ctx.shadowBlur  = 0;
+
+  // Crosshair at center of loupe
+  ctx.strokeStyle = 'rgba(255, 60, 60, 0.9)';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(lx - 10, ly); ctx.lineTo(lx + 10, ly);
+  ctx.moveTo(lx, ly - 10); ctx.lineTo(lx, ly + 10);
+  ctx.stroke();
+
+  // Connector line from loupe to cursor
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(lx, ly + RADIUS);
+  ctx.lineTo(cx, cy);
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function renderRouteLines(ctx) {
@@ -1037,6 +1108,68 @@ function renderCompare() {
 }
 
 // ============================================================
+// EDGE SNAPPING — snap GPT coords to actual image edges
+// ============================================================
+
+function snapToEdges(segments, bounds) {
+  const img = refs.housePhoto;
+  const iw  = img.naturalWidth;
+  const ih  = img.naturalHeight;
+  if (!iw || !ih) return segments;
+
+  // Render image to offscreen canvas to read pixels
+  const oc  = document.createElement('canvas');
+  oc.width  = iw;
+  oc.height = ih;
+  const ctx = oc.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, iw, ih).data;
+
+  const gray = (x, y) => {
+    x = Math.max(0, Math.min(iw - 1, Math.round(x)));
+    y = Math.max(0, Math.min(ih - 1, Math.round(y)));
+    const i = (y * iw + x) * 4;
+    return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+  };
+
+  // Gradient score biased toward HORIZONTAL edges (= roof eave lines)
+  const score = (x, y) => {
+    const gx = Math.abs(gray(x + 1, y) - gray(x - 1, y));
+    const gy = Math.abs(gray(x, y + 1) - gray(x, y - 1));
+    return gy * 2.0 + gx * 0.5; // prefer horizontal edges
+  };
+
+  // Canvas-to-image scale
+  const sx = iw / bounds.w;
+  const sy = ih / bounds.h;
+
+  // Search ±RADIUS canvas pixels around each point
+  const RADIUS = 28;
+  const STEP   = 2; // sample every 2 image pixels for speed
+
+  return segments.map(seg => seg.map(pt => {
+    const imgX = (pt.x - bounds.x) * sx;
+    const imgY = (pt.y - bounds.y) * sy;
+    const rX   = RADIUS * sx;
+    const rY   = RADIUS * sy;
+
+    let bestScore = -1, bestX = imgX, bestY = imgY;
+    for (let dy = -rY; dy <= rY; dy += STEP) {
+      for (let dx = -rX; dx <= rX; dx += STEP) {
+        if (dx * dx / (rX * rX) + dy * dy / (rY * rY) > 1) continue; // ellipse search
+        const s = score(imgX + dx, imgY + dy);
+        if (s > bestScore) { bestScore = s; bestX = imgX + dx; bestY = imgY + dy; }
+      }
+    }
+
+    return {
+      x: bestX / sx + bounds.x,
+      y: bestY / sy + bounds.y,
+    };
+  }));
+}
+
+// ============================================================
 // AUTO-DETECT ROOFLINE
 // ============================================================
 
@@ -1060,15 +1193,18 @@ async function autoDetectRoofline() {
     if (!bounds) throw new Error('Canvas not ready');
 
     // Map fractional coords to canvas coords
-    state.segments = data.segments
+    const rough = data.segments
       .filter(seg => Array.isArray(seg) && seg.length >= 2)
       .map(seg => seg.map(pt => ({
         x: bounds.x + pt.x * bounds.w,
         y: bounds.y + pt.y * bounds.h,
       })));
+
+    // Snap each point to the nearest strong horizontal edge in the actual image
+    state.segments = snapToEdges(rough, bounds);
     state.current  = [];
     state.isDrawMode = false;
-    state.editMode   = true;  // drop into edit mode so user can refine
+    state.editMode   = true;
     state.showLights = false;
     state.hoverTarget = null;
     state.dragTarget  = null;
@@ -1150,6 +1286,8 @@ function onEditMouseDown(e) {
 
 function onEditMouseMove(e) {
   const pos = getCanvasPos(e);
+  state.mouseX = pos.x;
+  state.mouseY = pos.y;
   if (state.dragTarget) {
     const { segIdx, ptIdx } = state.dragTarget;
     if (state.segments[segIdx]) state.segments[segIdx][ptIdx] = { x: pos.x, y: pos.y };
