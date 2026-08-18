@@ -132,8 +132,9 @@ const refs = {
   viewToggleBtn: document.getElementById('viewToggleBtn'),
   modeIndicator: document.getElementById('modeIndicator'),
   previewPreset: document.getElementById('previewPreset'),
-  downloadBtn:   document.getElementById('downloadBtn'),
-  bulbCount:     document.getElementById('bulbCount'),
+  downloadBtn:      document.getElementById('downloadBtn'),
+  bulbCount:        document.getElementById('bulbCount'),
+  saveRooflineBtn:  document.getElementById('saveRooflineBtn'),
 
   aiPresetButtons:  document.getElementById('aiPresetButtons'),
   qualityButtons:   document.getElementById('qualityButtons'),
@@ -216,6 +217,7 @@ function wireEvents() {
     render();
   });
   refs.downloadBtn.addEventListener('click', downloadMockup);
+  refs.saveRooflineBtn?.addEventListener('click', saveRooflinePhoto);
   refs.backToCanvasBtn.addEventListener('click', () => {
     refs.aiResultArea.classList.add('hidden');
     refs.canvasArea.classList.remove('hidden');
@@ -766,6 +768,19 @@ function renderAi() {
 // CAPTURE GUIDE PHOTO — render canvas lines onto image
 // ============================================================
 
+function saveRooflinePhoto() {
+  if (!state.photoDataUrl || !state.segments.length) {
+    alert('Draw the roofline first.');
+    return;
+  }
+  const dataUrl = captureGuidePhoto();
+  if (!dataUrl) return;
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = 'roofline-guide.jpg';
+  a.click();
+}
+
 function captureGuidePhoto() {
   const img = refs.housePhoto;
   const w = img.naturalWidth, h = img.naturalHeight;
@@ -795,44 +810,114 @@ function captureGuidePhoto() {
   return oc.toDataURL('image/jpeg', 0.92);
 }
 
+let _pollInterval = null;
+
 async function generateAiMockup() {
   if (!state.photoDataUrl) {
     alert('Upload the house photo first.');
     return;
   }
   refs.generateButton.disabled = true;
-  refs.generateButton.textContent = 'Generating…';
+  refs.generateButton.textContent = '⏳ Generating…';
+
+  const guidePhotoDataUrl = state.segments.length > 0 ? captureGuidePhoto() : null;
 
   try {
-    const guidePhotoDataUrl = state.segments.length > 0 ? captureGuidePhoto() : null;
-
     const res = await fetch('/api/mockup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: buildAiPrompt(),
         cleanPhotoDataUrl: state.photoDataUrl,
-        guidePhotoDataUrl: guidePhotoDataUrl,
+        guidePhotoDataUrl,
         preset: state.aiPreset,
         qualityMode: state.aiQuality,
       }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Generation failed');
-    state.generatedImageDataUrl = data.imageDataUrl;
-    refs.generatedPreview.src   = data.imageDataUrl;
 
-    refs.canvasArea.classList.add('hidden');
-    refs.aiResultArea.classList.remove('hidden');
-    renderCompare();
+    if (data.jobId) {
+      // Server returns a job ID — poll for the result
+      sessionStorage.setItem('pb_jobId', data.jobId);
+      refs.generateButton.textContent = '⏳ Generating… (~30s)';
+      showGeneratingBanner(true);
+      startPolling(data.jobId);
+    } else if (data.imageDataUrl) {
+      // Synchronous response (legacy)
+      showResult(data.imageDataUrl);
+    }
   } catch (err) {
-    alert(`Generation failed: ${err.message}`);
-  } finally {
     refs.generateButton.disabled = false;
     refs.generateButton.textContent = '✨ Generate AI Mockup';
-    renderAi();
+    alert(`Generation failed: ${err.message}`);
   }
 }
+
+function showGeneratingBanner(visible) {
+  let banner = document.getElementById('generatingBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'generatingBanner';
+    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#1a2533;color:#eef3f7;text-align:center;padding:14px 20px;font-size:.9rem;z-index:9999;border-top:1px solid rgba(255,255,255,.1)';
+    document.body.appendChild(banner);
+  }
+  if (visible) {
+    banner.textContent = '✨ AI image generating (~30 sec) — you can switch apps and come back!';
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function startPolling(jobId) {
+  if (_pollInterval) clearInterval(_pollInterval);
+  _pollInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/mockup-status?id=${jobId}`);
+      const data = await res.json();
+      if (data.status === 'done') {
+        clearInterval(_pollInterval);
+        _pollInterval = null;
+        sessionStorage.removeItem('pb_jobId');
+        showGeneratingBanner(false);
+        showResult(data.imageDataUrl);
+      } else if (data.status === 'failed') {
+        clearInterval(_pollInterval);
+        _pollInterval = null;
+        sessionStorage.removeItem('pb_jobId');
+        showGeneratingBanner(false);
+        refs.generateButton.disabled = false;
+        refs.generateButton.textContent = '✨ Generate AI Mockup';
+        alert(`Generation failed: ${data.error}`);
+      }
+    } catch (_) { /* network blip, keep polling */ }
+  }, 3000);
+}
+
+function showResult(imageDataUrl) {
+  state.generatedImageDataUrl = imageDataUrl;
+  refs.generatedPreview.src   = imageDataUrl;
+  refs.generateButton.disabled = false;
+  refs.generateButton.textContent = '✨ Generate AI Mockup';
+  refs.canvasArea.classList.add('hidden');
+  refs.aiResultArea.classList.remove('hidden');
+  renderCompare();
+  renderAi();
+  // Vibrate to notify if supported
+  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+}
+
+// Resume polling on page load if a job was in progress
+(function resumePollingIfNeeded() {
+  const jobId = sessionStorage.getItem('pb_jobId');
+  if (jobId) {
+    showGeneratingBanner(true);
+    refs.generateButton.disabled = true;
+    refs.generateButton.textContent = '⏳ Generating…';
+    startPolling(jobId);
+  }
+})();
 
 async function copyAiPrompt() {
   try {

@@ -22,32 +22,56 @@ const MIME_TYPES = {
 
 loadDotEnv();
 
-http.createServer((request, response) => {
-  if (request.method === "POST" && request.url === "/api/detect-roofline") {
-    collectJson(request)
-      .then((body) => detectRooflineWithAI(body))
-      .then((result) => {
-        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(JSON.stringify(result));
-      })
-      .catch((error) => {
-        response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(JSON.stringify({ error: error.message || "Detection failed" }));
-      });
-    return;
+// In-memory job store — keeps results for 15 minutes
+const jobs = new Map();
+setInterval(() => {
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  for (const [id, job] of jobs) {
+    if (job.createdAt < cutoff) jobs.delete(id);
   }
+}, 5 * 60 * 1000);
 
+function makeJobId() {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+http.createServer((request, response) => {
   if (request.method === "POST" && request.url === "/api/mockup") {
     collectJson(request)
-      .then((body) => generateMockup(body))
-      .then((result) => {
-        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(JSON.stringify(result));
+      .then((body) => {
+        const jobId = makeJobId();
+        jobs.set(jobId, { status: "pending", createdAt: Date.now() });
+        // Start generation without blocking the response
+        generateMockup(body)
+          .then((result) => jobs.set(jobId, { status: "done", result, createdAt: Date.now() }))
+          .catch((err) => jobs.set(jobId, { status: "failed", error: err.message || "Server error", createdAt: Date.now() }));
+        // Respond immediately with the job ID
+        response.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ jobId }));
       })
       .catch((error) => {
         response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify({ error: error.message || "Server error" }));
       });
+    return;
+  }
+
+  if (request.method === "GET" && request.url.startsWith("/api/mockup-status")) {
+    const id = new URL(request.url, "http://x").searchParams.get("id");
+    const job = jobs.get(id);
+    if (!job) {
+      response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ error: "Job not found" }));
+      return;
+    }
+    response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    if (job.status === "done") {
+      response.end(JSON.stringify({ status: "done", imageDataUrl: job.result.imageDataUrl }));
+    } else if (job.status === "failed") {
+      response.end(JSON.stringify({ status: "failed", error: job.error }));
+    } else {
+      response.end(JSON.stringify({ status: "pending" }));
+    }
     return;
   }
 
