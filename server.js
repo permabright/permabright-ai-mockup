@@ -272,7 +272,7 @@ async function generateWithReplicate(body, token) {
       input_images: imageUrls,
       aspect_ratio: "match_input_image",
       resolution: "match_input_image",
-      safety_tolerance: 5,
+      safety_tolerance: 2,
       output_format: "jpg",
       output_quality: 90
     }
