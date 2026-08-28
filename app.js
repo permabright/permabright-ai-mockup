@@ -255,17 +255,20 @@ function wireEvents() {
 // PHOTO HANDLING
 // ============================================================
 
+const MAX_PHOTO_DIMENSION = 2048; // keeps us under FLUX's ~4MP input/output pixel cap
+
 async function handlePhotoFile(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
-    state.photoDataUrl = reader.result;
+  reader.onload = async () => {
+    const resizedDataUrl = await resizeImageDataUrl(reader.result, MAX_PHOTO_DIMENSION);
+    state.photoDataUrl = resizedDataUrl;
     state.segments = [];
     state.drawDrag = null;
     state.generatedImageDataUrl = '';
 
-    refs.housePhoto.src = reader.result;
-    refs.originalPreview.src = reader.result;
+    refs.housePhoto.src = resizedDataUrl;
+    refs.originalPreview.src = resizedDataUrl;
     const short = file.name.length > 26 ? file.name.slice(0, 23) + '…' : file.name;
     refs.photoName.textContent = file.name;
     refs.photoLabelText.textContent = short;
@@ -282,6 +285,25 @@ async function handlePhotoFile(file) {
     };
   };
   reader.readAsDataURL(file);
+}
+
+function resizeImageDataUrl(sourceDataUrl, maxDimension) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(image, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.9));
+    };
+    image.onerror = () => reject(new Error('Could not load image.'));
+    image.src = sourceDataUrl;
+  });
 }
 
 // ============================================================
