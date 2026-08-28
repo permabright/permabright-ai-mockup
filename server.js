@@ -295,6 +295,7 @@ async function generateWithReplicate(body, token) {
   }
 
   if (prediction.status === "failed") {
+    console.error("Replicate prediction failed:", JSON.stringify(prediction));
     throw new Error(prediction.error || "Replicate prediction failed.");
   }
 
@@ -420,6 +421,7 @@ function requestJson({ hostname, path: requestPath, method, headers = {}, body }
         }
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
+          console.error(`Provider error from ${hostname}${requestPath} (status ${response.statusCode}):`, raw);
           reject(new Error(parsed?.error?.message || parsed?.detail || parsed?.error || `Request failed with status ${response.statusCode}`));
           return;
         }
